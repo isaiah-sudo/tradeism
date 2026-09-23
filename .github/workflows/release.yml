@@ -33,7 +33,7 @@ jobs:
 
       - name: Build Standalone Executable
         run: |
-          pyinstaller --noconsole --onefile --icon=assets/icon.ico --add-data "assets;assets" --name DayTradeSim main.py
+          pyinstaller --noconsole --onefile --icon=assets/icon.ico --add-data "assets;assets" --add-data "firebase_config.json;." --name DayTradeSim main.py
 
       - name: Build Windows Installer
         run: |

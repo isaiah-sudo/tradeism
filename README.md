@@ -2,17 +2,18 @@
 
 <div align="center">
 
-[![Download Windows Installer](https://img.shields.io/badge/Installer-DayTradeSim--Setup.exe-00E676?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim-Setup-v1.0.0.exe)
+[![Download Windows Installer](https://img.shields.io/badge/Installer-DayTradeSim--Setup--v1.1.0.exe-00E676?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim-Setup-v1.1.0.exe)
 [![Download Portable EXE](https://img.shields.io/badge/Portable-DayTradeSim.exe-00B0FF?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim.exe)
 [![GitHub Release](https://img.shields.io/github/v/release/isaiah-sudo/daytradesim?style=for-the-badge&color=2962FF)](https://github.com/isaiah-sudo/daytradesim/releases/latest)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero%20External-FF9800?style=for-the-badge)](requirements.txt)
 [![Stocks](https://img.shields.io/badge/Universe-100%20Volatile%20Stocks-purple?style=for-the-badge)](#-100-volatile-stocks-across-10-sectors)
+[![Multiplayer](https://img.shields.io/badge/Multiplayer-1v1%20Online%20Duel-ff007f?style=for-the-badge)](#-game-modes)
 [![License](https://img.shields.io/badge/License-MIT-gray?style=for-the-badge)](LICENSE)
 
 **An adrenaline-fueled, hyper-realistic intraday stock trading simulator.**  
-Experience the chaos of Wall Street with **100 ultra-volatile stocks**, breaking news catalysts, high-performance candlestick charts, smart execution hotkeys, and 4 difficulty speed modes.
+Experience the chaos of Wall Street with **100 ultra-volatile stocks**, breaking news catalysts, high-performance candlestick charts, smart execution hotkeys, 4 difficulty speed modes, and **1v1 Omegle-style Online Duels**.
 
-[Download Installer](#-download--play-windows) • [Features](#-key-features) • [Stock Universe](#-100-volatile-stocks-across-10-sectors) • [Hotkeys](#-universal-keyboard-hotkeys) • [Source Run](#-running-from-source)
+[Download Installer](#-download--play-windows) • [Game Modes](#-game-modes) • [Features](#-key-features) • [Stock Universe](#-100-volatile-stocks-across-10-sectors) • [Hotkeys](#-universal-keyboard-hotkeys) • [Source Run](#-running-from-source)
 
 </div>
 
@@ -23,6 +24,26 @@ Experience the chaos of Wall Street with **100 ultra-volatile stocks**, breaking
 **Day Trading Simulator** is a standalone Python application that drops you right into the trader's seat with **$25,000 in trading capital**. 
 
 Prices move continuously using stochastic jump-diffusion and momentum dynamics. Breaking news flashes across the terminal, sending stocks rocketing +40% or plunging -45% in seconds. Execute Longs, Shorts, Covers, and Scalps with lightning-fast universal hotkeys, professional dual-mode MAX order sizing, and real-time P&L tracking.
+
+---
+
+## 🕹️ Game Modes
+
+### 🎯 Solo Sandbox
+Classic single-player trading terminal designed for mastery:
+- **Adjustable Speeds**: Seamlessly switch between **1x Relaxed**, **3x Day Trader**, **8x HFT**, and **20x Turbo Insane**.
+- **Pause & Resume**: Stop the market at any moment (`Space`) to analyze setups.
+- **Unlimited Resets**: Reset your portfolio and market dynamics back to $25k at will.
+- **100 Volatile Stocks**: Trade across 10 sectors with real-time candlestick charts and order executions.
+- **Breaking News Engine**: Experience rapid catalyst price jumps and drops.
+
+### ⚔️ 1v1 Online Duel (Omegle-Style Matchmaking)
+High-octane competitive head-to-head trading battles:
+- **Quick Pairing**: Enter your nickname (or keep your auto-generated handle) and click **Find 1v1 Opponent (Pair Now)**.
+- **Live Real-Time Battle HUD**: The top HUD tracks your net equity vs your opponent's net equity in real time, featuring an active indicator displaying who is in the lead (`YOU LEAD` / `OPPONENT LEADS`).
+- **Synchronized Match Seed**: Both traders trade against the exact same market movements, candlestick charts, and breaking news catalysts simultaneously.
+- **3-Minute High-Stakes Blitz**: Out-trade, out-scale, and out-earn your rival before the 180-second duel clock expires!
+- **⏭️ Next Opponent Instant Re-Pair**: Skip or forfeit at any time with the Next button to immediately pair with a fresh trader.
 
 ---
 
@@ -104,7 +125,7 @@ Hotkeys work **everywhere** — including while searching stocks or typing share
 Anyone on Windows can download and play immediately—**no Python installation or setup required!**
 
 ### Option 1: Official Windows Installer (Recommended)
-👉 [**Download DayTradeSim-Setup-v1.0.0.exe**](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim-Setup-v1.0.0.exe)
+👉 [**Download DayTradeSim-Setup-v1.1.0.exe**](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim-Setup-v1.1.0.exe)
 - 🚀 Official setup wizard
 - 🖥️ Creates a **Desktop shortcut** with custom trading icon
 - 📌 Adds a **Start Menu shortcut** for instant access
@@ -113,7 +134,7 @@ Anyone on Windows can download and play immediately—**no Python installation o
 
 ### Option 2: Portable Standalone Executable
 👉 [**Download DayTradeSim.exe**](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim.exe)
-- 📁 Single 12 MB standalone file
+- 📁 Single 16 MB standalone file
 - ⚡ Run directly from your Downloads folder or USB drive—zero installation required!
 
 ---

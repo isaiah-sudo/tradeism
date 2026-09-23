@@ -478,10 +478,10 @@ class DayTradeSimApp(tk.Tk):
         def worker():
             try:
                 opp_data = self.fb_manager.update_player_metrics(eq, pnl, pnl_pct)
-                if self.battle_hud and not self._match_dialog_open:
-                    self.after(0, lambda: self.battle_hud.update_scores(eq, pnl, pnl_pct, opp_data))
-            except Exception as e:
-                print(f"[App] Metrics sync error: {e}")
+                if self.winfo_exists() and self.battle_hud and not self._match_dialog_open:
+                    self.after(0, lambda: self.battle_hud.update_scores(eq, pnl, pnl_pct, opp_data) if (self.winfo_exists() and self.battle_hud) else None)
+            except Exception:
+                pass
             finally:
                 self._is_syncing_metrics = False
 

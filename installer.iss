@@ -1,6 +1,6 @@
 ; Script generated for Inno Setup Compiler
 #define MyAppName "Day Trading Simulator"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "Isaiah"
 #define MyAppURL "https://github.com/isaiah-sudo/daytradesim"
 #define MyAppExeName "DayTradeSim.exe"
@@ -19,7 +19,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 LicenseFile=LICENSE
 OutputDir=dist
-OutputBaseFilename=DayTradeSim-Setup-v1.0.0
+OutputBaseFilename=DayTradeSim-Setup-v1.1.0
 SetupIconFile=assets\icon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -37,6 +37,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "assets\icon.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "firebase_config.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

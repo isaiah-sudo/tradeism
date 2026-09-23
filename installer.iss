@@ -28,6 +28,17 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
+; --- UPGRADE & PROCESS TERMINATION DIRECTIVES ---
+UsePreviousAppDir=yes
+UsePreviousGroup=yes
+UsePreviousTasks=yes
+UsePreviousPrivileges=yes
+CloseApplications=force
+CloseApplicationsFilter=DayTradeSim.exe
+RestartApplications=no
+UpdateUninstallLogAppName=yes
+CreateUninstallRegKey=yes
+
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
@@ -35,7 +46,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
 
 [Files]
-Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
 Source: "assets\icon.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "firebase_config.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
@@ -47,3 +58,13 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+function InitializeSetup(): Boolean;
+var
+  ErrorCode: Integer;
+begin
+  Result := True;
+  // Silently terminate any running instances of DayTradeSim.exe so existing files can be upgraded
+  Exec('taskkill.exe', '/F /IM DayTradeSim.exe', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode);
+end;

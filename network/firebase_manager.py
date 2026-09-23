@@ -1,12 +1,62 @@
 import os
+import sys
 import json
 import time
 import random
 import threading
+import urllib.request
+import urllib.error
+import ssl
 from typing import Optional, Dict, Any, Tuple
-import requests
 
-import sys
+class _Response:
+    def __init__(self, status_code: int, text: str):
+        self.status_code = status_code
+        self.text = text
+
+    def json(self) -> Dict[str, Any]:
+        if not self.text:
+            return {}
+        try:
+            return json.loads(self.text)
+        except Exception:
+            return {}
+
+class _HttpClient:
+    @staticmethod
+    def _request(method: str, url: str, json_data: Optional[Dict[str, Any]] = None,
+                 headers: Optional[Dict[str, str]] = None, timeout: float = 8.0) -> _Response:
+        req_headers = {"User-Agent": "DayTradeSim/1.1", "Content-Type": "application/json"}
+        if headers:
+            req_headers.update(headers)
+        body = json.dumps(json_data).encode("utf-8") if json_data is not None else None
+        req = urllib.request.Request(url, data=body, headers=req_headers, method=method)
+        ctx = ssl.create_default_context()
+        try:
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+                return _Response(r.status, r.read().decode("utf-8", errors="replace"))
+        except urllib.error.HTTPError as e:
+            try:
+                err_text = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                err_text = ""
+            return _Response(e.code, err_text)
+        except Exception as e:
+            return _Response(0, str(e))
+
+    def get(self, url: str, headers: Optional[Dict[str, str]] = None, timeout: float = 8.0) -> _Response:
+        return self._request("GET", url, headers=headers, timeout=timeout)
+
+    def post(self, url: str, json: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None, timeout: float = 8.0) -> _Response:
+        return self._request("POST", url, json_data=json, headers=headers, timeout=timeout)
+
+    def patch(self, url: str, json: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None, timeout: float = 8.0) -> _Response:
+        return self._request("PATCH", url, json_data=json, headers=headers, timeout=timeout)
+
+    def delete(self, url: str, headers: Optional[Dict[str, str]] = None, timeout: float = 8.0) -> _Response:
+        return self._request("DELETE", url, headers=headers, timeout=timeout)
+
+http = _HttpClient()
 
 def get_config_file() -> str:
     exe_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -171,7 +221,7 @@ class FirebaseManager:
         url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={self.api_key}"
         payload = {"returnSecureToken": True}
         try:
-            resp = requests.post(url, json=payload, timeout=8)
+            resp = http.post(url, json=payload, timeout=8)
             data = resp.json()
             if resp.status_code == 200:
                 self.user_id = data.get("localId", f"user_{int(time.time())}")
@@ -194,7 +244,7 @@ class FirebaseManager:
         url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={self.api_key}"
         payload = {"email": email, "password": password, "returnSecureToken": True}
         try:
-            resp = requests.post(url, json=payload, timeout=8)
+            resp = http.post(url, json=payload, timeout=8)
             data = resp.json()
             if resp.status_code == 200:
                 self.user_id = data.get("localId")
@@ -218,7 +268,7 @@ class FirebaseManager:
         url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={self.api_key}"
         payload = {"email": email, "password": password, "returnSecureToken": True}
         try:
-            resp = requests.post(url, json=payload, timeout=8)
+            resp = http.post(url, json=payload, timeout=8)
             data = resp.json()
             if resp.status_code == 200:
                 self.user_id = data.get("localId")
@@ -242,7 +292,7 @@ class FirebaseManager:
         if self.id_token:
             headers["Authorization"] = f"Bearer {self.id_token}"
         try:
-            resp = requests.get(self._firestore_url(path), headers=headers, timeout=5)
+            resp = http.get(self._firestore_url(path), headers=headers, timeout=5)
             if resp.status_code == 200:
                 return firestore_doc_to_dict(resp.json())
         except Exception as e:
@@ -255,7 +305,7 @@ class FirebaseManager:
             headers["Authorization"] = f"Bearer {self.id_token}"
         try:
             doc_body = dict_to_firestore_doc(data)
-            resp = requests.patch(self._firestore_url(path), json=doc_body, headers=headers, timeout=5)
+            resp = http.patch(self._firestore_url(path), json=doc_body, headers=headers, timeout=5)
             return resp.status_code == 200
         except Exception as e:
             print(f"[FirebaseManager] Set error on {path}: {e}")
@@ -266,7 +316,7 @@ class FirebaseManager:
         if self.id_token:
             headers["Authorization"] = f"Bearer {self.id_token}"
         try:
-            resp = requests.delete(self._firestore_url(path), headers=headers, timeout=5)
+            resp = http.delete(self._firestore_url(path), headers=headers, timeout=5)
             return resp.status_code in (200, 204)
         except Exception:
             return False
@@ -313,7 +363,7 @@ class FirebaseManager:
 
         try:
             # 1. Query existing queue
-            resp = requests.get(list_url, timeout=5)
+            resp = http.get(list_url, timeout=5)
             documents = resp.json().get("documents", []) if resp.status_code == 200 else []
 
             # Find valid candidate: status == "waiting", not self, not stale (> 45s)

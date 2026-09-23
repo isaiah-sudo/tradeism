@@ -3,15 +3,16 @@
 <div align="center">
 
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![Tkinter](https://img.shields.io/badge/GUI-Tkinter%2060%20FPS-00E676?style=for-the-badge)](https://docs.python.org/3/library/tkinter.html)
+[![Download EXE](https://img.shields.io/badge/Download-DayTradeSim.exe-00E676?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim.exe)
+[![GitHub Release](https://img.shields.io/github/v/release/isaiah-sudo/daytradesim?style=for-the-badge&color=2962FF)](https://github.com/isaiah-sudo/daytradesim/releases/latest)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero%20External-FF9800?style=for-the-badge)](requirements.txt)
-[![Stocks](https://img.shields.io/badge/Universe-100%20Volatile%20Stocks-2962FF?style=for-the-badge)](#-100-volatile-stocks-across-10-sectors)
-[![License](https://img.shields.io/badge/License-MIT-purple?style=for-the-badge)](LICENSE)
+[![Stocks](https://img.shields.io/badge/Universe-100%20Volatile%20Stocks-purple?style=for-the-badge)](#-100-volatile-stocks-across-10-sectors)
+[![License](https://img.shields.io/badge/License-MIT-gray?style=for-the-badge)](LICENSE)
 
 **An adrenaline-fueled, hyper-realistic intraday stock trading simulator.**  
 Experience the chaos of Wall Street with **100 ultra-volatile stocks**, breaking news catalysts, high-performance candlestick charts, smart execution hotkeys, and 4 difficulty speed modes.
 
-[Features](#-key-features) • [Stock Universe](#-100-volatile-stocks-across-10-sectors) • [Hotkeys](#-universal-keyboard-hotkeys) • [Quick Start](#-quick-start)
+[Download EXE](#-download--play-windows) • [Features](#-key-features) • [Stock Universe](#-100-volatile-stocks-across-10-sectors) • [Hotkeys](#-universal-keyboard-hotkeys) • [Source Run](#-running-from-source)
 
 </div>
 
@@ -98,7 +99,17 @@ Hotkeys work **everywhere** — including while searching stocks or typing share
 
 ---
 
-## 🚀 Quick Start
+## 🎮 Download & Play (Windows)
+
+Anyone on Windows can download and play immediately—**no Python installation or setup required!**
+
+1. Go to the [**Latest Release**](https://github.com/isaiah-sudo/daytradesim/releases/latest) or click below:
+   👉 [**Download DayTradeSim.exe**](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim.exe)
+2. Double-click `DayTradeSim.exe` to start trading!
+
+---
+
+## 🐍 Running from Source
 
 ### 1. Requirements
 - Python 3.9 or higher

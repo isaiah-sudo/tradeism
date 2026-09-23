@@ -58,7 +58,10 @@ class MarketEngine:
         "TURBO INSANE (20x)": {"tick_ms": 50, "news_prob": 0.12, "label": "Adrenaline Junkie (20 ticks/sec)"},
     }
 
-    def __init__(self, initial_cash: float = 25000.0):
+    def __init__(self, initial_cash: float = 25000.0, seed: Optional[int] = None):
+        self.seed = seed
+        if seed is not None:
+            random.seed(seed)
         self.initial_cash = initial_cash
         self.cash = initial_cash
         self.realized_pnl = 0.0
@@ -296,8 +299,11 @@ class MarketEngine:
         else:
             return self.cover(ticker, abs(pos.shares))
 
-    def reset_account(self):
+    def reset_account(self, seed: Optional[int] = None):
         """Reset game state."""
+        if seed is not None:
+            self.seed = seed
+            random.seed(seed)
         self.cash = self.initial_cash
         self.realized_pnl = 0.0
         self.trades.clear()

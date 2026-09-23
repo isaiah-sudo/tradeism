@@ -2,8 +2,8 @@
 
 <div align="center">
 
-[![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![Download EXE](https://img.shields.io/badge/Download-DayTradeSim.exe-00E676?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim.exe)
+[![Download Windows Installer](https://img.shields.io/badge/Installer-DayTradeSim--Setup.exe-00E676?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim-Setup-v1.0.0.exe)
+[![Download Portable EXE](https://img.shields.io/badge/Portable-DayTradeSim.exe-00B0FF?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim.exe)
 [![GitHub Release](https://img.shields.io/github/v/release/isaiah-sudo/daytradesim?style=for-the-badge&color=2962FF)](https://github.com/isaiah-sudo/daytradesim/releases/latest)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero%20External-FF9800?style=for-the-badge)](requirements.txt)
 [![Stocks](https://img.shields.io/badge/Universe-100%20Volatile%20Stocks-purple?style=for-the-badge)](#-100-volatile-stocks-across-10-sectors)
@@ -12,7 +12,7 @@
 **An adrenaline-fueled, hyper-realistic intraday stock trading simulator.**  
 Experience the chaos of Wall Street with **100 ultra-volatile stocks**, breaking news catalysts, high-performance candlestick charts, smart execution hotkeys, and 4 difficulty speed modes.
 
-[Download EXE](#-download--play-windows) • [Features](#-key-features) • [Stock Universe](#-100-volatile-stocks-across-10-sectors) • [Hotkeys](#-universal-keyboard-hotkeys) • [Source Run](#-running-from-source)
+[Download Installer](#-download--play-windows) • [Features](#-key-features) • [Stock Universe](#-100-volatile-stocks-across-10-sectors) • [Hotkeys](#-universal-keyboard-hotkeys) • [Source Run](#-running-from-source)
 
 </div>
 
@@ -103,9 +103,18 @@ Hotkeys work **everywhere** — including while searching stocks or typing share
 
 Anyone on Windows can download and play immediately—**no Python installation or setup required!**
 
-1. Go to the [**Latest Release**](https://github.com/isaiah-sudo/daytradesim/releases/latest) or click below:
-   👉 [**Download DayTradeSim.exe**](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim.exe)
-2. Double-click `DayTradeSim.exe` to start trading!
+### Option 1: Official Windows Installer (Recommended)
+👉 [**Download DayTradeSim-Setup-v1.0.0.exe**](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim-Setup-v1.0.0.exe)
+- 🚀 Official setup wizard
+- 🖥️ Creates a **Desktop shortcut** with custom trading icon
+- 📌 Adds a **Start Menu shortcut** for instant access
+- ⚙️ Clean install & clean uninstaller in Windows *Settings > Apps*
+- 🛡️ Installs safely per-user (no admin / UAC prompt required!)
+
+### Option 2: Portable Standalone Executable
+👉 [**Download DayTradeSim.exe**](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim.exe)
+- 📁 Single 12 MB standalone file
+- ⚡ Run directly from your Downloads folder or USB drive—zero installation required!
 
 ---
 

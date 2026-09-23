@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from typing import Optional
+import threading
+import time
+from typing import Optional, Callable, Dict, Any
 from simulation.engine import MarketEngine
 from simulation.news import NewsItem
 from ui.chart import CandlestickChart
@@ -8,10 +10,12 @@ from ui.watchlist import WatchlistPanel
 from ui.trading_panel import TradingPanel
 from ui.news_feed import NewsFeedPanel
 from ui.trade_log_panel import TradeLogPanel
+from ui.battle_panel import BattleHUD, MatchEndDialog
 
 class DayTradeSimApp(tk.Tk):
     """
     Main Application Window for the Day Trading Simulator.
+    Supports Solo Sandbox and 1v1 Online PvP Battle modes.
     """
     THEME_BG = "#0e1117"
     BAR_BG = "#161a25"
@@ -20,23 +24,62 @@ class DayTradeSimApp(tk.Tk):
     GREEN = "#089981"
     RED = "#f23645"
 
-    def __init__(self):
+    def __init__(
+        self,
+        mode: str = "solo",
+        match_data: Optional[Dict[str, Any]] = None,
+        fb_manager: Optional[Any] = None,
+        on_return_to_menu: Optional[Callable[[], None]] = None
+    ):
         super().__init__()
-        self.title("⚡ DAY TRADE SIMULATOR • PRO TRADER TERMINAL")
-        self.geometry("1280x820")
-        self.minsize(1050, 700)
+        self.mode = mode
+        self.match_data = match_data or {}
+        self.fb_manager = fb_manager
+        self.on_return_to_menu = on_return_to_menu
+        self.battle_hud: Optional[BattleHUD] = None
+        self._is_syncing_metrics = False
+        self._match_dialog_open = False
+
+        seed = self.match_data.get("seed") if self.mode == "online" else None
+        opp_name = self.match_data.get("opponent", {}).get("name", "Opponent") if self.mode == "online" else ""
+
+        if self.mode == "online":
+            self.title(f"⚡ DAY TRADE SIMULATOR • 1v1 DUEL vs {opp_name}")
+        else:
+            self.title("⚡ DAY TRADE SIMULATOR • PRO TRADER TERMINAL")
+
+        self.geometry("1280x850")
+        self.minsize(1050, 720)
         self.configure(bg=self.THEME_BG)
 
-        # Initialize Simulation Engine
-        self.engine = MarketEngine(initial_cash=25000.0)
+        # Set window icon if available
+        import os, sys
+        base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        icon_path = os.path.join(base_dir, "assets", "icon.ico")
+        if os.path.exists(icon_path):
+            try:
+                self.iconbitmap(icon_path)
+            except Exception:
+                pass
+
+        # Initialize Simulation Engine (Deterministic seed if online)
+        self.engine = MarketEngine(initial_cash=25000.0, seed=seed)
+        if self.mode == "online":
+            self.engine.current_difficulty = "Day Trader (3x)"
+
         self.active_ticker = "NVXP"
         self._loop_job: Optional[str] = None
 
         self._init_styles()
         self._build_header()
+        if self.mode == "online":
+            self._build_battle_hud()
         self._build_main_layout()
         self._build_bottom_panel()
         self._bind_hotkeys()
+
+        # Handle window close
+        self.protocol("WM_DELETE_WINDOW", self._on_window_close)
 
         # Start simulation loop
         self._schedule_next_tick()
@@ -83,68 +126,111 @@ class DayTradeSimApp(tk.Tk):
         self.lbl_realized = make_stat_box(metrics_f, "REALIZED P&L")
         self.lbl_total_pnl = make_stat_box(metrics_f, "TOTAL RETURN")
 
-        # Right: Speed Difficulty & Control Buttons
+        # Right: Speed Difficulty & Control Buttons (or Online Duel Badge)
         ctrl_f = tk.Frame(top_bar, bg=self.BAR_BG)
         ctrl_f.pack(side=tk.RIGHT, padx=15, pady=8)
 
-        # Difficulty Selector
-        tk.Label(ctrl_f, text="SPEED:", font=("Segoe UI", 8, "bold"), fg=self.TEXT_MUTED, bg=self.BAR_BG).pack(side=tk.LEFT, padx=(0, 5))
-
-        self.diff_buttons = {}
-        for diff_name, short_label in [
-            ("Relaxed (1x)", "1x Relaxed"),
-            ("Day Trader (3x)", "3x Trader"),
-            ("High Frequency (8x)", "8x HFT"),
-            ("TURBO INSANE (20x)", "20x TURBO")
-        ]:
-            is_active = (diff_name == self.engine.current_difficulty)
-            btn = tk.Button(
+        if self.mode == "online":
+            tk.Label(
                 ctrl_f,
-                text=short_label,
+                text="⚔️ 1v1 COMPETITIVE (3x Speed)",
+                font=("Segoe UI", 9, "bold"),
+                fg="#00e676",
+                bg="#1a2e22",
+                padx=8,
+                pady=4
+            ).pack(side=tk.LEFT, padx=4)
+
+            btn_leave = tk.Button(
+                ctrl_f,
+                text="🚪 Exit Duel",
                 font=("Segoe UI", 8, "bold"),
-                bg="#2962ff" if is_active else "#222631",
-                fg="#ffffff" if is_active else self.TEXT_MUTED,
-                activebackground="#3d72ff",
-                activeforeground="#ffffff",
+                bg="#3d1b22",
+                fg="#ff5252",
                 relief=tk.FLAT,
-                padx=6, pady=2,
+                padx=8, pady=3,
                 cursor="hand2",
-                command=lambda d=diff_name: self._set_difficulty(d)
+                command=self._handle_leave_battle
             )
-            btn.pack(side=tk.LEFT, padx=2)
-            self.diff_buttons[diff_name] = btn
+            btn_leave.pack(side=tk.LEFT, padx=4)
+        else:
+            # Difficulty Selector
+            tk.Label(ctrl_f, text="SPEED:", font=("Segoe UI", 8, "bold"), fg=self.TEXT_MUTED, bg=self.BAR_BG).pack(side=tk.LEFT, padx=(0, 5))
 
-        # Pause / Resume Button
-        self.btn_pause = tk.Button(
-            ctrl_f,
-            text="⏸ Pause",
-            font=("Segoe UI", 8, "bold"),
-            bg="#2a2e39",
-            fg=self.TEXT_WHITE,
-            activebackground="#363c4e",
-            activeforeground=self.TEXT_WHITE,
-            relief=tk.FLAT,
-            padx=8, pady=2,
-            cursor="hand2",
-            command=self._toggle_pause
-        )
-        self.btn_pause.pack(side=tk.LEFT, padx=(10, 4))
+            self.diff_buttons = {}
+            for diff_name, short_label in [
+                ("Relaxed (1x)", "1x Relaxed"),
+                ("Day Trader (3x)", "3x Trader"),
+                ("High Frequency (8x)", "8x HFT"),
+                ("TURBO INSANE (20x)", "20x TURBO")
+            ]:
+                is_active = (diff_name == self.engine.current_difficulty)
+                btn = tk.Button(
+                    ctrl_f,
+                    text=short_label,
+                    font=("Segoe UI", 8, "bold"),
+                    bg="#2962ff" if is_active else "#222631",
+                    fg="#ffffff" if is_active else self.TEXT_MUTED,
+                    activebackground="#3d72ff",
+                    activeforeground="#ffffff",
+                    relief=tk.FLAT,
+                    padx=6, pady=2,
+                    cursor="hand2",
+                    command=lambda d=diff_name: self._set_difficulty(d)
+                )
+                btn.pack(side=tk.LEFT, padx=2)
+                self.diff_buttons[diff_name] = btn
 
-        # Reset Game Button
-        btn_reset = tk.Button(
-            ctrl_f,
-            text="🔄 Reset",
-            font=("Segoe UI", 8, "bold"),
-            bg="#3d1b22",
-            fg="#ff5252",
-            activebackground="#54242e",
-            activeforeground="#ff5252",
-            relief=tk.FLAT,
-            padx=8, pady=2,
-            cursor="hand2",
-            command=self._reset_sim
+            # Pause / Resume Button
+            self.btn_pause = tk.Button(
+                ctrl_f,
+                text="⏸ Pause",
+                font=("Segoe UI", 8, "bold"),
+                bg="#2a2e39",
+                fg=self.TEXT_WHITE,
+                activebackground="#363c4e",
+                activeforeground=self.TEXT_WHITE,
+                relief=tk.FLAT,
+                padx=8, pady=2,
+                cursor="hand2",
+                command=self._toggle_pause
+            )
+            self.btn_pause.pack(side=tk.LEFT, padx=(10, 4))
+
+            # Reset Game Button
+            btn_reset = tk.Button(
+                ctrl_f,
+                text="🔄 Reset",
+                font=("Segoe UI", 8, "bold"),
+                bg="#3d1b22",
+                fg="#ff5252",
+                activebackground="#54242e",
+                activeforeground="#ff5252",
+                relief=tk.FLAT,
+                padx=8, pady=2,
+                cursor="hand2",
+                command=self._reset_sim
+            )
+            btn_reset.pack(side=tk.LEFT, padx=2)
+
+    def _build_battle_hud(self):
+        """Constructs 1v1 battle HUD panel at top of workspace."""
+        my_name = getattr(self.fb_manager, "display_name", "You") or "You"
+        opp = self.match_data.get("opponent", {})
+        opp_name = opp.get("name", "Opponent")
+        duration = self.match_data.get("duration_seconds", 180)
+        start_time = self.match_data.get("start_time", time.time())
+
+        self.battle_hud = BattleHUD(
+            self,
+            my_name=my_name,
+            opponent_name=opp_name,
+            round_duration=duration,
+            start_time=start_time,
+            on_next_opponent=self._handle_next_opponent,
+            on_leave_battle=self._handle_leave_battle
         )
-        btn_reset.pack(side=tk.LEFT, padx=2)
+        self.battle_hud.pack(fill=tk.X, side=tk.TOP, padx=8, pady=(4, 0))
 
     def _build_main_layout(self):
         """Center layout with Watchlist on left, Candlestick Chart in center, Trading Panel on right."""
@@ -278,6 +364,8 @@ class DayTradeSimApp(tk.Tk):
                 btn.config(bg="#222631", fg=self.TEXT_MUTED)
 
     def _toggle_pause(self):
+        if self.mode == "online":
+            return  # Pausing disabled in competitive online matches
         self.engine.is_paused = not self.engine.is_paused
         if self.engine.is_paused:
             self.btn_pause.config(text="▶ Resume", bg="#089981")
@@ -285,6 +373,8 @@ class DayTradeSimApp(tk.Tk):
             self.btn_pause.config(text="⏸ Pause", bg="#2a2e39")
 
     def _reset_sim(self):
+        if self.mode == "online":
+            return  # Reset disabled during competitive online matches
         confirm = messagebox.askyesno("Reset Account", "Reset your balance to $25,000 and restart simulation?")
         if confirm:
             self.engine.reset_account()
@@ -326,7 +416,7 @@ class DayTradeSimApp(tk.Tk):
         )
 
     def _simulation_loop(self):
-        """Heartbeat simulation step with throttled scanner rendering."""
+        """Heartbeat simulation step with throttled scanner rendering and online synchronization."""
         try:
             import time as _t
             news = self.engine.step()
@@ -338,6 +428,29 @@ class DayTradeSimApp(tk.Tk):
             self.chart.draw()
             self.trading_panel.update_display()
             self._update_header_metrics()
+
+            # Handle Online 1v1 battle ticks & timer
+            if self.mode == "online" and self.battle_hud:
+                time_ok = self.battle_hud.tick_timer()
+                if not time_ok and not self._match_dialog_open:
+                    self._match_dialog_open = True
+                    self.engine.is_paused = True
+                    MatchEndDialog(
+                        self,
+                        my_equity=self.engine.total_equity,
+                        opp_equity=self.battle_hud.opp_equity,
+                        my_name=self.battle_hud.my_name,
+                        opp_name=self.battle_hud.opponent_name,
+                        on_next=self._handle_next_opponent,
+                        on_menu=self._handle_leave_battle
+                    )
+
+                # Sync metrics with Firebase / Bot in background thread
+                now = _t.time()
+                if not hasattr(self, "_last_fb_sync") or (now - self._last_fb_sync) >= 1.0:
+                    self._last_fb_sync = now
+                    if not self._is_syncing_metrics and self.fb_manager:
+                        self._sync_online_metrics()
 
             # Throttle 100-stock watchlist DOM updates to ~8 FPS for maximum GUI smoothness
             now = _t.time()
@@ -354,3 +467,118 @@ class DayTradeSimApp(tk.Tk):
         diff_cfg = self.engine.DIFFICULTIES.get(self.engine.current_difficulty, self.engine.DIFFICULTIES["Day Trader (3x)"])
         tick_ms = diff_cfg["tick_ms"]
         self._loop_job = self.after(tick_ms, self._simulation_loop)
+
+    def _sync_online_metrics(self):
+        """Asynchronously syncs current trading equity to Firebase and pulls opponent metrics."""
+        self._is_syncing_metrics = True
+        eq = self.engine.total_equity
+        pnl = self.engine.total_pnl
+        pnl_pct = self.engine.total_pnl_pct
+
+        def worker():
+            try:
+                opp_data = self.fb_manager.update_player_metrics(eq, pnl, pnl_pct)
+                if self.battle_hud and not self._match_dialog_open:
+                    self.after(0, lambda: self.battle_hud.update_scores(eq, pnl, pnl_pct, opp_data))
+            except Exception as e:
+                print(f"[App] Metrics sync error: {e}")
+            finally:
+                self._is_syncing_metrics = False
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _handle_next_opponent(self):
+        """Omegle-style skip to find and pair with another opponent."""
+        if self.fb_manager:
+            self.fb_manager.forfeit_or_leave()
+
+        # Create quick search popup
+        dialog = tk.Toplevel(self)
+        dialog.title("Finding Next Opponent")
+        dialog.geometry("420x220")
+        dialog.resizable(False, False)
+        dialog.configure(bg="#0e1117")
+        dialog.transient(self)
+        dialog.grab_set()
+
+        # Center on parent
+        self.update_idletasks()
+        pw, ph = self.winfo_width(), self.winfo_height()
+        px, py = self.winfo_rootx(), self.winfo_rooty()
+        dialog.geometry(f"+{px + (pw - 420)//2}+{py + (ph - 220)//2}")
+
+        tk.Label(dialog, text="🔍 Omegle Matchmaking", font=("Segoe UI", 14, "bold"), fg="#00e676", bg="#0e1117").pack(pady=(25, 6))
+        lbl_status = tk.Label(dialog, text="Searching for next live opponent...", font=("Segoe UI", 10), fg="#c5c8d1", bg="#0e1117")
+        lbl_status.pack(pady=4)
+
+        cancel_ev = threading.Event()
+
+        def do_cancel():
+            cancel_ev.set()
+            dialog.destroy()
+            self._handle_leave_battle()
+
+        btn_cancel = tk.Button(
+            dialog,
+            text="Cancel Search",
+            font=("Segoe UI", 9),
+            bg="#2a2e39",
+            fg="#ff5252",
+            relief=tk.FLAT,
+            padx=12, pady=4,
+            cursor="hand2",
+            command=do_cancel
+        )
+        btn_cancel.pack(pady=15)
+
+        def search_worker():
+            new_match = self.fb_manager.find_match(cancel_ev)
+            if cancel_ev.is_set():
+                return
+            if new_match:
+                dialog.after(0, lambda: self._apply_new_match(dialog, new_match))
+            else:
+                dialog.after(0, lambda: self._on_requeue_timeout(dialog))
+
+        threading.Thread(target=search_worker, daemon=True).start()
+
+    def _apply_new_match(self, dialog, new_match: Dict[str, Any]):
+        dialog.destroy()
+        self._match_dialog_open = False
+        self.match_data = new_match
+        opp_name = new_match.get("opponent", {}).get("name", "Opponent")
+        self.title(f"⚡ DAY TRADE SIMULATOR • 1v1 DUEL vs {opp_name}")
+
+        # Reset account with synchronized seed
+        self.engine.reset_account(seed=new_match.get("seed"))
+        self.engine.is_paused = False
+
+        if self.battle_hud:
+            self.battle_hud.destroy()
+        self._build_battle_hud()
+
+        self.watchlist.update_prices()
+        self.chart.set_stock(self.engine.stocks[self.active_ticker])
+        self.trading_panel.update_display()
+        self.trade_log_panel.refresh_trades([])
+        self._update_header_metrics()
+
+    def _on_requeue_timeout(self, dialog):
+        dialog.destroy()
+        messagebox.showinfo("Matchmaking Timeout", "Could not find an opponent right now. Returning to main menu.")
+        self._handle_leave_battle()
+
+    def _handle_leave_battle(self):
+        if self._loop_job:
+            self.after_cancel(self._loop_job)
+            self._loop_job = None
+        if self.fb_manager:
+            self.fb_manager.forfeit_or_leave()
+        self.destroy()
+        if self.on_return_to_menu:
+            self.on_return_to_menu()
+
+    def _on_window_close(self):
+        if self.mode == "online" and self.fb_manager:
+            self.fb_manager.forfeit_or_leave()
+        self.destroy()

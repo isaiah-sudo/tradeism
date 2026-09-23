@@ -1,0 +1,3 @@
+# Day Trading Simulator
+# Uses Python standard library (tkinter, random, time, math, collections, dataclasses).
+# Zero external dependencies required!

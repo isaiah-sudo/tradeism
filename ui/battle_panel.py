@@ -181,7 +181,7 @@ class BattleHUD(tk.Frame):
         elif diff > 0:
             self.lbl_leader.config(text=f"👑 YOU LEAD BY +${diff:,.2f}!", fg=self.GREEN)
         else:
-            self.lbl_leader.config(text=f"⚠️ OPPONENT LEADS BY -${abs(diff):,.2f}!", fg=self.RED)
+            self.lbl_leader.config(text=f"⚠️ {self.opponent_name} LEADS BY -${abs(diff):,.2f}!", fg=self.RED)
 
     def tick_timer(self) -> bool:
         """

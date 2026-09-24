@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Download Windows Installer](https://img.shields.io/badge/Installer-DayTradeSim--Setup--v1.5.0.exe-00E676?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/tradeism/releases/latest/download/DayTradeSim-Setup-v1.5.0.exe)
+[![Download Windows Installer](https://img.shields.io/badge/Installer-DayTradeSim--Setup--v1.6.0.exe-00E676?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/tradeism/releases/latest/download/DayTradeSim-Setup-v1.6.0.exe)
 [![Download Portable EXE](https://img.shields.io/badge/Portable-DayTradeSim.exe-00B0FF?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/tradeism/releases/latest/download/DayTradeSim.exe)
 [![GitHub Release](https://img.shields.io/github/v/release/isaiah-sudo/tradeism?style=for-the-badge&color=2962FF)](https://github.com/isaiah-sudo/tradeism/releases/latest)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero%20External-FF9800?style=for-the-badge)](requirements.txt)
@@ -48,17 +48,18 @@ High-octane competitive head-to-head trading battles:
 
 ---
 
-## 🛒 Trader Shop & Customizations (New in v1.4)
+## 🛒 Trader Shop & Customizations (Upgraded in v1.7)
 
 Lock in your hard-earned trading profits and build a persistent empire:
-- **💰 Real-Time Profit Banking**: Whenever your net equity exceeds your starting $25,000 capital, the header's **💰 Bank Profit** button lights up green. One click takes your profit, saves it to your persistent **Menu Vault**, plays your win animation, and sends you back to the menu to begin a fresh round!
+- **💰 Real-Time Profit Banking**: Whenever your net equity exceeds your starting $25,000 capital, the header's **💰 Bank Profit** button lights up green. One click takes your profit, saves it to your persistent **Menu Vault**, triggers your equipped high-octane 60 FPS celebration animation with vault stats, and transitions back to the menu!
 - **💾 Local Machine Persistence**: All banked savings, unlocked items, and equipped cosmetic presets are persisted locally (`~/.daytradesim/user_profile.json` on Desktop, `localStorage` on Web).
-- **🎆 Crazy Win Animations**:
-  - **💸 Money Rain & Gold Confetti** (Free default)
-  - **🚀 To The Moon Rocket Blast** ($25,000)
-  - **⚡ Cyber Matrix Glitch Rain** ($75,000)
-  - **💎 Diamond Hands Supernova** ($200,000)
-  - **👑 Golden Bull Stampede** ($500,000)
+- **🎆 Ultra-Smooth 60 FPS Win Animations (v1.7 Overhaul)**:
+  - **💸 Money Rain & Gold Confetti** (Free default) — 3D fluttering banknotes with realistic polygon perspective flip physics, metallic tumbling foil confetti, and sparkling starbursts.
+  - **🚀 To The Moon Rocket Blast** ($25,000) — Perspective warp-speed radial starfield, dynamic multi-tier thruster plumes (white core, plasma jet, smoke puffs & sparks), supersonic shockwaves, and lunar fireworks splashdown.
+  - **⚡ Cyber Matrix Glitch Rain** ($75,000) — Dual-layer streaming digital code with brilliant white/mint leading head glow, authentic character scrambling/morphing, sweeping CRT scanlines, and cyber glitch slices.
+  - **💎 Diamond Hands Supernova** ($200,000) — Gravitational singularity phase with inward-collapsing energy rings and motes, followed by a blinding cosmic supernova blast with 90+ faceted prismatic crystal shards.
+  - **👑 Golden Bull Stampede** ($500,000) — Charging golden mechanical bull with motion-blur trailing echoes, twin piercing laser eyes, hoof ground shockwaves, and an avalanche of bouncing bullion and coins.
+  - **🔊 Victory Fanfare Audio**: Asynchronous non-blocking victory chimes, fanfare chords, and cash register sounds synthesizer.
 - **🎨 Custom UI Themes, SFX & Titles**: Unlock the **Cyberpunk Neon Theme** ($50,000), **Golden Bull VIP Theme** ($150,000), **DJ Airhorn SFX** ($15,000), and the prestigious **Wall Street Whale Title** ($100,000).
 
 ---
@@ -141,7 +142,7 @@ Hotkeys work **everywhere** — including while searching stocks or typing share
 Anyone on Windows can download and play immediately—**no Python installation or setup required!**
 
 ### Option 1: Official Windows Installer (Recommended)
-👉 [**Download DayTradeSim-Setup-v1.5.0.exe**](https://github.com/isaiah-sudo/tradeism/releases/latest/download/DayTradeSim-Setup-v1.5.0.exe)
+👉 [**Download DayTradeSim-Setup-v1.6.0.exe**](https://github.com/isaiah-sudo/tradeism/releases/latest/download/DayTradeSim-Setup-v1.6.0.exe)
 - 🚀 Official setup wizard
 - 🖥️ Creates a **Desktop shortcut** with custom trading icon
 - 📌 Adds a **Start Menu shortcut** for instant access

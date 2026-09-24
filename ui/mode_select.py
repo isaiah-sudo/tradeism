@@ -442,7 +442,7 @@ class ModeSelectWindow(tk.Tk):
                 return
 
             self.after(0, lambda: self.lbl_queue_status.config(text="🔍 Searching for live opponent (Omegle queue)...", fg="#00e676"))
-            match_data = self.fb_manager.find_match(self._cancel_search)
+            match_data = self.fb_manager.find_match(self._cancel_search, display_name=nickname)
 
             if self._cancel_search.is_set():
                 return

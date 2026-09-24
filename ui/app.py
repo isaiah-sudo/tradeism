@@ -524,7 +524,6 @@ class DayTradeSimApp(tk.Tk):
         profit = self.engine.bank_profit()
         if profit > 0:
             new_bal = self.profile.bank_profit(profit)
-            play_win_animation(self)
             self.watchlist.update_prices()
             pos = self.engine.positions.get(self.active_ticker)
             self.chart.set_position(pos)
@@ -532,14 +531,16 @@ class DayTradeSimApp(tk.Tk):
             self.trading_panel.update_display()
             self.trade_log_panel.refresh_trades(self.engine.trades)
             self._update_header_metrics()
-            messagebox.showinfo(
-                "💰 Profit Banked to Menu!",
-                f"🎉 Profit locked in!\n\n"
-                f"+${profit:,.2f} has been transferred to your Menu Vault.\n"
-                f"Total Saved Menu Balance: ${new_bal:,.2f}\n\n"
-                f"Round complete! Returning to main menu."
+
+            # Play full celebration animation with vault stats, then return to menu when dismissed
+            play_win_animation(
+                self,
+                profit_info={
+                    "profit": profit,
+                    "new_balance": new_bal
+                },
+                on_finished=self._handle_return_to_menu
             )
-            self._handle_return_to_menu()
 
     def _simulation_loop(self):
         """Heartbeat simulation step with throttled scanner rendering and online synchronization."""
@@ -585,25 +586,36 @@ class DayTradeSimApp(tk.Tk):
 
                     my_eq = self.engine.total_equity
                     diff = my_eq - opp_eq
-                    if diff > 0.0:
-                        self.profile.duels_won += 1
-                        self.profile.save()
-                        play_win_animation(self)
 
                     # Auto-bank profit above 25000
+                    profit = 0.0
                     if my_eq > 25000.0:
                         profit = my_eq - 25000.0
                         self.profile.bank_profit(profit)
 
-                    MatchEndDialog(
-                        self,
-                        my_equity=self.engine.total_equity,
-                        opp_equity=opp_eq,
-                        my_name=self.battle_hud.my_name,
-                        opp_name=self.battle_hud.opponent_name,
-                        on_next=self._handle_next_opponent,
-                        on_menu=self._handle_leave_battle
-                    )
+                    def show_match_dialog():
+                        if not self._match_dialog_open:
+                            return
+                        MatchEndDialog(
+                            self,
+                            my_equity=self.engine.total_equity,
+                            opp_equity=opp_eq,
+                            my_name=self.battle_hud.my_name,
+                            opp_name=self.battle_hud.opponent_name,
+                            on_next=self._handle_next_opponent,
+                            on_menu=self._handle_leave_battle
+                        )
+
+                    if diff > 0.0:
+                        self.profile.duels_won += 1
+                        self.profile.save()
+                        play_win_animation(
+                            self,
+                            profit_info={"profit": profit, "duel_win": True, "diff": diff} if profit > 0 else {"duel_win": True, "diff": diff},
+                            on_finished=show_match_dialog
+                        )
+                    else:
+                        show_match_dialog()
 
                 # Sync metrics with Firebase / Bot in background thread
                 now = _t.time()
@@ -639,7 +651,18 @@ class DayTradeSimApp(tk.Tk):
             try:
                 opp_data = self.fb_manager.update_player_metrics(eq, pnl, pnl_pct)
                 if self.winfo_exists() and self.battle_hud and not self._match_dialog_open:
-                    self.after(0, lambda: self.battle_hud.update_scores(eq, pnl, pnl_pct, opp_data) if (self.winfo_exists() and self.battle_hud) else None)
+                    def _update_ui():
+                        if not self.winfo_exists() or not self.battle_hud:
+                            return
+                        self.battle_hud.update_scores(eq, pnl, pnl_pct, opp_data)
+                        if opp_data and opp_data.get("name"):
+                            curr_title = f"⚡ DAY TRADE SIMULATOR • 1v1 DUEL vs {opp_data['name']}"
+                            try:
+                                if self.title() != curr_title:
+                                    self.title(curr_title)
+                            except Exception:
+                                pass
+                    self.after(0, _update_ui)
             except Exception:
                 pass
             finally:
@@ -695,7 +718,8 @@ class DayTradeSimApp(tk.Tk):
         btn_cancel.pack(pady=15)
 
         def search_worker():
-            new_match = self.fb_manager.find_match(cancel_ev)
+            my_disp_name = getattr(self.fb_manager, "display_name", None)
+            new_match = self.fb_manager.find_match(cancel_ev, display_name=my_disp_name)
             if cancel_ev.is_set():
                 return
             if new_match:

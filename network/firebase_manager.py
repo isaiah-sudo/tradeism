@@ -327,14 +327,21 @@ class FirebaseManager:
 
     # --- OMEGLE-STYLE MATCHMAKING ---
 
-    def find_match(self, cancel_event: threading.Event) -> Optional[Dict[str, Any]]:
+    def find_match(self, cancel_event: threading.Event, display_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Omegle matchmaking queue:
-        1. Checks for waiting opponent.
-        2. If found, matches immediately and creates match room.
-        3. If none found, enters queue and waits up to 30s.
-        4. If cancel_event is set or timeout occurs, aborts cleanly.
+        1. Registers player in match_queue as waiting.
+        2. Loops polling own ticket and checking queue for other waiting players.
+        3. Deterministic initiator logic pairs players together without split-brain.
+        4. Transfers player names accurately to each other.
+        5. If cancel_event is set, cleans up and aborts.
+        6. If timeout occurs, pairs with dynamic simulated rival bot.
         """
+        if display_name:
+            self.display_name = display_name.strip()
+        if not self.display_name:
+            self.display_name = f"Trader_{random.randint(100, 999)}"
+
         if self.is_mock_mode:
             # Simulate searching for 1.5 seconds, then match with a live bot opponent!
             for _ in range(15):
@@ -366,131 +373,162 @@ class FirebaseManager:
         now = time.time()
 
         try:
-            # Clear any stale queue entry for self first
-            self._firestore_delete(queue_path)
-
-            # 1. Query existing queue
-            resp = http.get(list_url, timeout=5)
-            documents = resp.json().get("documents", []) if resp.status_code == 200 else []
-
-            # Find valid candidate: status == "waiting", not self, not stale (> 45s)
-            found_candidate: Optional[Dict[str, Any]] = None
-            for doc in documents:
-                doc_name = doc.get("name", "").split("/")[-1]
-                data = firestore_doc_to_dict(doc)
-                if doc_name != self.user_id and data.get("status") == "waiting":
-                    t = data.get("timestamp", 0)
-                    if (now - t) < 45.0:
-                        found_candidate = data
-                        found_candidate["uid"] = doc_name
-                        break
-
-            if found_candidate:
-                # We found an opponent! Create match room
-                opp_uid = found_candidate["uid"]
-                opp_name = found_candidate.get("name", "Opponent")
-                match_id = f"m_{self.user_id[:4]}_{opp_uid[:4]}_{int(now)}"
-                seed = random.randint(100000, 999999)
-
-                match_data = {
-                    "match_id": match_id,
-                    "seed": seed,
-                    "duration_seconds": 180,
-                    "start_time": now + 2.0,  # 2 second grace countdown
-                    "status": "active",
-                    "player1": {
-                        "uid": opp_uid,
-                        "name": opp_name,
-                        "equity": 25000.0,
-                        "pnl": 0.0,
-                        "pnl_pct": 0.0,
-                        "status": "playing",
-                        "last_update": now
-                    },
-                    "player2": {
-                        "uid": self.user_id,
-                        "name": self.display_name,
-                        "equity": 25000.0,
-                        "pnl": 0.0,
-                        "pnl_pct": 0.0,
-                        "status": "playing",
-                        "last_update": now
-                    }
-                }
-
-                # Save match room
-                self._firestore_set(f"matches/{match_id}", match_data, merge=False)
-
-                # Notify opponent ticket
-                self._firestore_set(f"match_queue/{opp_uid}", {
-                    "name": opp_name,
-                    "status": "matched",
-                    "match_id": match_id,
-                    "seed": seed,
-                    "timestamp": now
-                }, merge=False)
-
-                # Remove self from queue if present
-                self._firestore_delete(queue_path)
-
-                self.active_match_id = match_id
-                self.player_slot = "player2"
-                return {
-                    "match_id": match_id,
-                    "seed": seed,
-                    "duration_seconds": 180,
-                    "start_time": now + 2.0,
-                    "player_slot": "player2",
-                    "opponent": {
-                        "uid": opp_uid,
-                        "name": opp_name,
-                        "equity": 25000.0,
-                        "pnl": 0.0,
-                        "pnl_pct": 0.0
-                    }
-                }
-
-            # 2. No opponent found yet -> Register in queue as waiting
+            # 1. Register self in queue as waiting (overwriting any stale entry)
             self._firestore_set(queue_path, {
                 "name": self.display_name,
                 "status": "waiting",
                 "timestamp": now
             }, merge=False)
 
-            # Poll for match assignment or cancel (Fast pairing within 6 seconds)
+            # Polling loop: up to 15 seconds before bot fallback
             poll_start = time.time()
-            while time.time() - poll_start < 6.0:
+            while (time.time() - poll_start) < 15.0:
                 if cancel_event.is_set():
                     self._firestore_delete(queue_path)
                     return None
 
-                time.sleep(0.75)
+                time.sleep(0.5)
+
+                # A. Check if our ticket was matched by another player
                 ticket = self._firestore_get(queue_path)
                 if ticket and ticket.get("status") == "matched":
                     match_id = ticket.get("match_id")
-                    match_doc = self._firestore_get(f"matches/{match_id}")
+                    slot = ticket.get("player_slot") or "player2"
+                    seed = ticket.get("seed", 12345)
+                    start_time = ticket.get("start_time", time.time())
+                    opp_name = ticket.get("opponent_name") or "Opponent"
+                    opp_uid = ticket.get("opponent_uid") or ""
+
+                    # Verify / fetch match room document (with short retries for replication)
+                    match_doc = None
+                    for _ in range(4):
+                        match_doc = self._firestore_get(f"matches/{match_id}")
+                        if match_doc:
+                            break
+                        time.sleep(0.25)
+
                     self._firestore_delete(queue_path)
 
                     if match_doc:
-                        self.active_match_id = match_id
-                        self.player_slot = "player1"
-                        opp = match_doc.get("player2", {})
-                        return {
+                        opp_slot = "player1" if slot == "player2" else "player2"
+                        opp_data = match_doc.get(opp_slot, {})
+                        opp_name = opp_data.get("name") or opp_name
+                        opp_uid = opp_data.get("uid") or opp_uid
+                        seed = match_doc.get("seed", seed)
+                        start_time = match_doc.get("start_time", start_time)
+
+                    self.active_match_id = match_id
+                    self.player_slot = slot
+                    self.opponent_bot = None
+                    return {
+                        "match_id": match_id,
+                        "seed": seed,
+                        "duration_seconds": 180,
+                        "start_time": start_time,
+                        "player_slot": slot,
+                        "opponent": {
+                            "uid": opp_uid,
+                            "name": opp_name,
+                            "equity": 25000.0,
+                            "pnl": 0.0,
+                            "pnl_pct": 0.0
+                        }
+                    }
+
+                # B. Look for other waiting candidates in match_queue
+                headers = {"Authorization": f"Bearer {self.id_token}"} if self.id_token else {}
+                resp = http.get(list_url, headers=headers, timeout=5)
+                documents = resp.json().get("documents", []) if resp.status_code == 200 else []
+
+                curr_time = time.time()
+                candidates = []
+                for doc in documents:
+                    doc_name = doc.get("name", "").split("/")[-1]
+                    data = firestore_doc_to_dict(doc)
+                    if doc_name != self.user_id and data.get("status") == "waiting":
+                        t = data.get("timestamp", 0)
+                        if (curr_time - t) < 60.0:
+                            data["uid"] = doc_name
+                            candidates.append(data)
+
+                if candidates:
+                    # Sort candidates by timestamp (oldest first)
+                    candidates.sort(key=lambda c: c.get("timestamp", 0))
+                    cand = candidates[0]
+                    cand_uid = cand["uid"]
+                    cand_name = cand.get("name") or "Opponent"
+                    cand_ts = cand.get("timestamp", 0)
+
+                    # Deterministic tie-breaker: Lower UID creates match
+                    should_create = (self.user_id < cand_uid)
+                    if should_create:
+                        match_id = f"m_{self.user_id[:4]}_{cand_uid[:4]}_{int(curr_time)}"
+                        seed = random.randint(100000, 999999)
+
+                        match_data = {
                             "match_id": match_id,
-                            "seed": match_doc.get("seed", 12345),
-                            "duration_seconds": match_doc.get("duration_seconds", 180),
-                            "start_time": match_doc.get("start_time", time.time()),
-                            "player_slot": "player1",
-                            "opponent": {
-                                "uid": opp.get("uid", ""),
-                                "name": opp.get("name", "Opponent"),
-                                "equity": opp.get("equity", 25000.0),
-                                "pnl": opp.get("pnl", 0.0),
-                                "pnl_pct": opp.get("pnl_pct", 0.0)
+                            "seed": seed,
+                            "duration_seconds": 180,
+                            "start_time": curr_time + 2.0,
+                            "status": "active",
+                            "player1": {
+                                "uid": self.user_id,
+                                "name": self.display_name,
+                                "equity": 25000.0,
+                                "pnl": 0.0,
+                                "pnl_pct": 0.0,
+                                "status": "playing",
+                                "last_update": curr_time
+                            },
+                            "player2": {
+                                "uid": cand_uid,
+                                "name": cand_name,
+                                "equity": 25000.0,
+                                "pnl": 0.0,
+                                "pnl_pct": 0.0,
+                                "status": "playing",
+                                "last_update": curr_time
                             }
                         }
 
-            # If no human opponent joined within 12s, deploy dynamic rival bot so player can duel immediately!
+                        # 1. Create match room in Firestore
+                        self._firestore_set(f"matches/{match_id}", match_data, merge=False)
+
+                        # 2. Update opponent's ticket with match ID, seed, and OUR display name
+                        self._firestore_set(f"match_queue/{cand_uid}", {
+                            "name": cand_name,
+                            "status": "matched",
+                            "match_id": match_id,
+                            "seed": seed,
+                            "start_time": curr_time + 2.0,
+                            "player_slot": "player2",
+                            "opponent_name": self.display_name,
+                            "opponent_uid": self.user_id,
+                            "timestamp": curr_time
+                        }, merge=False)
+
+                        # 3. Clean up our own ticket
+                        self._firestore_delete(queue_path)
+
+                        self.active_match_id = match_id
+                        self.player_slot = "player1"
+                        self.opponent_bot = None
+                        return {
+                            "match_id": match_id,
+                            "seed": seed,
+                            "duration_seconds": 180,
+                            "start_time": curr_time + 2.0,
+                            "player_slot": "player1",
+                            "opponent": {
+                                "uid": cand_uid,
+                                "name": cand_name,
+                                "equity": 25000.0,
+                                "pnl": 0.0,
+                                "pnl_pct": 0.0
+                            }
+                        }
+
+            # If no human opponent joined within 15s, deploy dynamic rival bot so player can duel immediately!
             self._firestore_delete(queue_path)
             self.opponent_bot = SimulatedOpponentBot()
             self.active_match_id = f"rival_match_{int(time.time())}"

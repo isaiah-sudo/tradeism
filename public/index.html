@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Day Trading Simulator • Pro Trader Web Terminal</title>
+    <title>Day Trading Simulator • Pro Trader Web Terminal v1.4.0</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
 </head>
@@ -48,7 +48,10 @@
                 <option value="TURBO INSANE (20x)">TURBO (20x)</option>
             </select>
             <button class="btn-ctrl" id="btn-pause">⏸ Pause</button>
+            <button class="btn-ctrl btn-bank-profit" id="btn-bank-profit" disabled>💰 Bank Profit</button>
             <button class="btn-ctrl" id="btn-reset">↺ Reset</button>
+            <button class="btn-ctrl" id="btn-shop-open" style="color:var(--gold);font-weight:700;">🛒 Shop</button>
+            <button class="btn-ctrl" id="btn-menu">🏠 Menu</button>
             <button class="btn-duel" id="btn-switch-duel">⚔️ 1v1 Online Duel</button>
         </div>
     </header>
@@ -76,10 +79,12 @@
         </div>
 
         <div class="hud-actions">
+            <button class="btn-ctrl" id="btn-hud-shop" style="color:var(--gold);font-weight:700;margin-right:4px;">🛒 Shop</button>
             <button class="btn-next-opp" id="btn-next-opp">⏭ Next Opponent</button>
             <button class="btn-leave" id="btn-leave-duel">Leave Duel</button>
         </div>
     </div>
+
 
     <!-- =========================================================
          MAIN 3-COLUMN LAYOUT
@@ -263,8 +268,13 @@
     <div class="modal-overlay" id="modal-mode">
         <div class="modal-card">
             <div style="font-size:36px;margin-bottom:8px;">⚡</div>
-            <h2 class="modal-title">DAY TRADE SIMULATOR</h2>
+            <h2 class="modal-title">DAY TRADE SIMULATOR <span style="font-size:14px;color:var(--text-muted);">v1.4.0</span></h2>
             <p class="modal-sub">Choose your game mode to enter the trading floor</p>
+
+            <div class="menu-vault-pill" id="menu-vault-pill">
+                <span>💰 Menu Vault Balance: <strong id="modal-vault-bal" class="up">$0.00</strong></span>
+                <button class="btn-shop-badge" id="btn-modal-shop">🛒 Trader Shop</button>
+            </div>
 
             <input type="text" class="nickname-input" id="nickname-input" placeholder="Enter Trader Nickname">
 
@@ -320,13 +330,53 @@
         </div>
     </div>
 
+    <!-- 4. Trader Shop Modal -->
+    <div class="modal-overlay" id="modal-shop" style="display:none;">
+        <div class="modal-card shop-modal-card">
+            <div class="shop-header">
+                <div>
+                    <h2 class="modal-title" style="text-align:left;">🛒 TRADER SHOP & REWARDS</h2>
+                    <p class="modal-sub" style="text-align:left;margin-bottom:0;">Bank profits above $25k to unlock crazy victory celebrations & custom perks!</p>
+                </div>
+                <div class="shop-vault-box">
+                    <span class="label">MENU VAULT BALANCE</span>
+                    <span class="value up" id="shop-vault-bal">$0.00</span>
+                </div>
+            </div>
+
+            <div class="shop-category-tabs" id="shop-category-tabs">
+                <button class="shop-tab-btn active" data-cat="all">🌟 All Items</button>
+                <button class="shop-tab-btn" data-cat="animation">🎆 Crazy Win Animations</button>
+                <button class="shop-tab-btn" data-cat="theme">🎨 Themes</button>
+                <button class="shop-tab-btn" data-cat="sfx">🔊 Audio</button>
+                <button class="shop-tab-btn" data-cat="title">🎖️ Titles</button>
+            </div>
+
+            <div class="shop-items-list" id="shop-items-list">
+                <!-- Dynamically rendered items -->
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+                <button class="btn-ctrl" id="btn-close-shop" style="padding:8px 24px;">Close Shop</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fullscreen Win Animation Canvas Overlay -->
+    <canvas id="anim-canvas" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:999999;pointer-events:all;background:rgba(6,9,14,0.92);"></canvas>
+    <div id="anim-overlay-ui" style="display:none;position:fixed;top:20px;right:20px;z-index:1000000;">
+        <button class="btn-ctrl" id="btn-skip-anim" style="background:#222631;border:1px solid #3d4454;color:#fff;font-weight:700;padding:6px 14px;border-radius:4px;cursor:pointer;">✕ Close</button>
+    </div>
+
     <!-- Application Scripts -->
     <script src="js/stock-universe.js"></script>
     <script src="js/news-generator.js"></script>
     <script src="js/simulation-engine.js"></script>
     <script src="js/chart.js"></script>
     <script src="js/firebase-matchmaker.js"></script>
+    <script src="js/win-animations.js"></script>
     <script src="js/app.js"></script>
 
 </body>
 </html>
+

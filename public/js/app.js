@@ -76,6 +76,82 @@ class SoundFx {
     }
 }
 
+// --- Shop Catalog Specification ---
+const SHOP_ITEMS = [
+    {
+        id: "money_rain",
+        name: "Money Rain & Gold Confetti",
+        category: "animation",
+        price: 0,
+        icon: "💸",
+        description: "High-roller cash storm! 100-dollar bills and shimmering gold glitter shower down."
+    },
+    {
+        id: "rocket_moon",
+        name: "To The Moon Rocket Blast",
+        category: "animation",
+        price: 25000,
+        icon: "🚀",
+        description: "Screen-shaking neon rocket blastoff with blazing particle thrusters, warp speed stars & lunar splashdown!"
+    },
+    {
+        id: "matrix_glitch",
+        name: "Cyber Matrix Glitch Rain",
+        category: "animation",
+        price: 75000,
+        icon: "⚡",
+        description: "Neon green digital rain cascades down with retro CRT distortion, scanlines, and lightning victory flashes!"
+    },
+    {
+        id: "diamond_hands",
+        name: "Diamond Hands Supernova",
+        category: "animation",
+        price: 200000,
+        icon: "💎",
+        description: "Glowing diamond hands rise up, shattering into thousands of shimmering prismatic gemstone particles with a cosmic shockwave!"
+    },
+    {
+        id: "golden_bull",
+        name: "Golden Bull Stampede",
+        category: "animation",
+        price: 500000,
+        icon: "👑",
+        description: "The ultimate Wall Street flex. Giant mechanical golden bull charges across screen with laser eyes & bullion explosions!"
+    },
+    {
+        id: "theme_cyberpunk",
+        name: "Cyberpunk Neon Theme",
+        category: "theme",
+        price: 50000,
+        icon: "🔮",
+        description: "Futuristic neon purple & electric cyan styling for your trading dashboard."
+    },
+    {
+        id: "theme_gold_vip",
+        name: "Golden Bull VIP Theme",
+        category: "theme",
+        price: 150000,
+        icon: "✨",
+        description: "Ultra-prestige obsidian and metallic gold luxury border accents."
+    },
+    {
+        id: "sfx_airhorn",
+        name: "DJ Airhorn & Cha-Ching!",
+        category: "sfx",
+        price: 15000,
+        icon: "📢",
+        description: "Stadium DJ victory airhorns and cash register cha-ching audio euphoria."
+    },
+    {
+        id: "title_whale",
+        name: "Title: 'Wall Street Whale'",
+        category: "title",
+        price: 100000,
+        icon: "🐋",
+        description: "Display the prestigious [WHALE] title on your trader badge in duels & menu."
+    }
+];
+
 // --- App State & Controller ---
 class TradingApp {
     constructor() {
@@ -88,6 +164,10 @@ class TradingApp {
         this.selectedQty = 50;
         this.activeSector = "All";
         this.searchQuery = "";
+        this.activeShopCat = "all";
+
+        // Load saved profile (balance, inventory, equipped animations)
+        this.profile = this._loadProfile();
 
         // Match state
         this.matchData = null;
@@ -106,12 +186,49 @@ class TradingApp {
         this._bindEvents();
         this._renderScanner();
         this._selectTicker("NVXP");
+        this._updateVaultDisplay();
 
         // Start solo loop initially
         this._scheduleNextTick();
 
         // Prompt mode select on first arrival
         this.showModeModal();
+    }
+
+    _loadProfile() {
+        try {
+            const raw = localStorage.getItem("daytradesim_profile");
+            if (raw) {
+                const p = JSON.parse(raw);
+                if (!p.inventory) p.inventory = ["money_rain"];
+                if (!p.inventory.includes("money_rain")) p.inventory.push("money_rain");
+                if (!p.equipped_animation) p.equipped_animation = "money_rain";
+                return p;
+            }
+        } catch (e) {}
+        return {
+            menu_balance: 0.0,
+            total_profit_banked: 0.0,
+            inventory: ["money_rain"],
+            equipped_animation: "money_rain",
+            equipped_theme: "default",
+            duels_won: 0
+        };
+    }
+
+    _saveProfile() {
+        try {
+            localStorage.setItem("daytradesim_profile", JSON.stringify(this.profile));
+        } catch (e) {}
+    }
+
+    _bankProfit(profitAmount) {
+        if (profitAmount <= 0) return this.profile.menu_balance;
+        this.profile.menu_balance = Math.round((this.profile.menu_balance + profitAmount) * 100) / 100;
+        this.profile.total_profit_banked = Math.round((this.profile.total_profit_banked + profitAmount) * 100) / 100;
+        this._saveProfile();
+        this._updateVaultDisplay();
+        return this.profile.menu_balance;
     }
 
     _bindDom() {
@@ -127,6 +244,10 @@ class TradingApp {
         this.elTotalPnl = document.getElementById("hdr-total-pnl");
         this.elSpeedSelect = document.getElementById("speed-select");
         this.elBtnPause = document.getElementById("btn-pause");
+        this.elBtnBankProfit = document.getElementById("btn-bank-profit");
+        this.elBtnShopOpen = document.getElementById("btn-shop-open");
+        this.elBtnHudShop = document.getElementById("btn-hud-shop");
+        this.elBtnMenu = document.getElementById("btn-menu");
 
         // Battle HUD
         this.elHudMyName = document.getElementById("hud-my-name");
@@ -164,13 +285,23 @@ class TradingApp {
 
         // Modals
         this.elModalMode = document.getElementById("modal-mode");
+        this.elModalVaultBal = document.getElementById("modal-vault-bal");
+        this.elBtnModalShop = document.getElementById("btn-modal-shop");
         this.elNicknameInput = document.getElementById("nickname-input");
         this.elModalMatchmaking = document.getElementById("modal-matchmaking");
         this.elMatchStatusTxt = document.getElementById("match-status-txt");
         this.elModalMatchEnd = document.getElementById("modal-match-end");
         this.elEndOutcome = document.getElementById("end-outcome");
         this.elEndDetails = document.getElementById("end-details");
+
+        // Shop Modal
+        this.elModalShop = document.getElementById("modal-shop");
+        this.elBtnCloseShop = document.getElementById("btn-close-shop");
+        this.elShopVaultBal = document.getElementById("shop-vault-bal");
+        this.elShopItemsList = document.getElementById("shop-items-list");
+        this.elShopCatTabs = document.getElementById("shop-category-tabs");
     }
+
 
     _initChart() {
         this.chart = new CandlestickChart("chart-canvas");
@@ -201,6 +332,11 @@ class TradingApp {
             this.elBtnPause.textContent = this.engine.isPaused ? "▶ Resume" : "⏸ Pause";
         });
 
+        // Bank Profit to Menu
+        if (this.elBtnBankProfit) {
+            this.elBtnBankProfit.addEventListener("click", () => this._handleBankProfitClick());
+        }
+
         // Reset
         document.getElementById("btn-reset").addEventListener("click", () => {
             if (confirm("Reset account equity to $25,000.00 and wipe current positions?")) {
@@ -208,6 +344,37 @@ class TradingApp {
                 this._updateAllUi();
             }
         });
+
+        // Shop buttons
+        if (this.elBtnShopOpen) {
+            this.elBtnShopOpen.addEventListener("click", () => this.showShopModal());
+        }
+        if (this.elBtnHudShop) {
+            this.elBtnHudShop.addEventListener("click", () => this.showShopModal());
+        }
+        if (this.elBtnModalShop) {
+            this.elBtnModalShop.addEventListener("click", () => this.showShopModal());
+        }
+        if (this.elBtnCloseShop) {
+            this.elBtnCloseShop.addEventListener("click", () => this.hideShopModal());
+        }
+
+        // Return to Menu
+        if (this.elBtnMenu) {
+            this.elBtnMenu.addEventListener("click", () => this._handleReturnToMenu());
+        }
+
+        // Shop category tab buttons
+        if (this.elShopCatTabs) {
+            this.elShopCatTabs.querySelectorAll(".shop-tab-btn").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    this.elShopCatTabs.querySelectorAll(".shop-tab-btn").forEach(b => b.classList.remove("active"));
+                    btn.classList.add("active");
+                    this.activeShopCat = btn.getAttribute("data-cat") || "all";
+                    this._renderShopItems();
+                });
+            });
+        }
 
         // Switch to Duel from Solo header
         document.getElementById("btn-switch-duel").addEventListener("click", () => {
@@ -533,6 +700,18 @@ class TradingApp {
         this.elTotalPnl.textContent = `${pnlSign}$${pnl.toFixed(2)} (${pnlSign}${pnlPct.toFixed(2)}%)`;
         this.elTotalPnl.className = `value ${pnl >= 0 ? 'up' : 'down'}`;
 
+        // Bank Profit Button update
+        if (this.elBtnBankProfit) {
+            const profitAbove25k = Math.max(0, this.engine.totalEquity - 25000.0);
+            if (profitAbove25k > 0) {
+                this.elBtnBankProfit.disabled = false;
+                this.elBtnBankProfit.textContent = `💰 Bank +$${profitAbove25k.toFixed(2)}`;
+            } else {
+                this.elBtnBankProfit.disabled = true;
+                this.elBtnBankProfit.textContent = "💰 Bank Profit";
+            }
+        }
+
         // Desk
         this._updateDeskEstimate();
         this._updateDeskPosition();
@@ -768,10 +947,20 @@ class TradingApp {
             }
         }
 
+        // Auto-bank profit above $25,000
+        if (myEq > 25000.0) {
+            this._bankProfit(myEq - 25000.0);
+        }
+
         let title = "MATCH COMPLETE: TIED!";
         if (myEq > oppEq) {
             title = "🏆 VICTORY! YOU CRUSHED YOUR OPPONENT!";
+            this.profile.duels_won = (this.profile.duels_won || 0) + 1;
+            this._saveProfile();
             this.sfx.playWin();
+            if (window.winAnimations) {
+                window.winAnimations.play(this.profile.equipped_animation, "🏆 1v1 DUEL VICTORY! 🏆");
+            }
         } else if (myEq < oppEq) {
             title = "💀 DEFEAT! OPPONENT WON THIS ROUND!";
         }
@@ -788,11 +977,22 @@ class TradingApp {
         const mySign = myPnl >= 0 ? "+" : "";
         const oppSign = oppPnl >= 0 ? "+" : "";
 
+        let bankedHtml = "";
+        if (myEq > 25000.0) {
+            bankedHtml = `
+                <div class="menu-vault-pill" style="margin: 10px 0;">
+                    <span>💰 Banked to Menu Vault: <strong class="up">+${(myEq - 25000).toFixed(2)}</strong></span>
+                    <span>New Balance: <strong class="up">$${this.profile.menu_balance.toFixed(2)}</strong></span>
+                </div>
+            `;
+        }
+
         this.elEndDetails.innerHTML = `
             <div style="font-size:15px;margin-bottom:12px;color:var(--text-white);">
                 <b>Your Final Balance:</b> $${myEq.toFixed(2)} (${mySign}$${myPnl.toFixed(2)})<br>
                 <b>Opponent Final Balance:</b> $${oppEq.toFixed(2)} (${oppSign}$${oppPnl.toFixed(2)})
             </div>
+            ${bankedHtml}
             <p style="color:var(--text-muted);font-size:12px;">Click Next Opponent to jump directly into another live 1v1 showdown!</p>
         `;
         this.elModalMatchEnd.style.display = "flex";
@@ -806,10 +1006,147 @@ class TradingApp {
     }
 
     async _leaveDuel() {
+        if (this.engine.totalEquity > 25000.0) {
+            const profit = this.engine.bankProfit();
+            if (profit > 0) this._bankProfit(profit);
+        }
         await this.fb.forfeitOrLeave();
         if (this.matchTimerInterval) clearInterval(this.matchTimerInterval);
         if (this.syncMetricsInterval) clearInterval(this.syncMetricsInterval);
         this._startSoloMode();
+    }
+
+    _handleReturnToMenu() {
+        if (this.engine.totalEquity > 25000.0) {
+            const profit = this.engine.bankProfit();
+            if (profit > 0) this._bankProfit(profit);
+        }
+        if (this.matchTimerInterval) clearInterval(this.matchTimerInterval);
+        if (this.syncMetricsInterval) clearInterval(this.syncMetricsInterval);
+        this.showModeModal();
+    }
+
+    _handleBankProfitClick() {
+        const profit = this.engine.bankProfit();
+        if (profit > 0) {
+            const newBal = this._bankProfit(profit);
+            if (window.winAnimations) {
+                window.winAnimations.play(this.profile.equipped_animation);
+            }
+            this.sfx.playWin();
+            this._updateAllUi();
+            alert(`🎉 Profit locked in!\n\n+$${profit.toFixed(2)} transferred to your Menu Vault.\nTotal Saved Menu Balance: $${newBal.toFixed(2)}\n\nRound complete! Returning to main menu.`);
+            this._handleReturnToMenu();
+        }
+    }
+
+    // --- Shop System ---
+    showShopModal() {
+        this._updateVaultDisplay();
+        this._renderShopItems();
+        if (this.elModalShop) this.elModalShop.style.display = "flex";
+    }
+
+    hideShopModal() {
+        if (this.elModalShop) this.elModalShop.style.display = "none";
+    }
+
+    _updateVaultDisplay() {
+        const balStr = `$${this.profile.menu_balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        if (this.elModalVaultBal) this.elModalVaultBal.textContent = balStr;
+        if (this.elShopVaultBal) this.elShopVaultBal.textContent = balStr;
+    }
+
+    _renderShopItems() {
+        if (!this.elShopItemsList) return;
+        const items = SHOP_ITEMS.filter(it => this.activeShopCat === "all" || it.category === this.activeShopCat);
+        let html = "";
+        for (const item of items) {
+            const owned = this.profile.inventory.includes(item.id);
+            const isEquipped = (
+                (item.category === "animation" && this.profile.equipped_animation === item.id) ||
+                (item.category === "theme" && this.profile.equipped_theme === item.id)
+            );
+            const priceStr = item.price === 0 ? "FREE" : `$${item.price.toLocaleString()}`;
+            const canAfford = this.profile.menu_balance >= item.price;
+
+            let actionHtml = "";
+            if (owned) {
+                if (isEquipped) {
+                    actionHtml = `<span class="shop-badge-equipped">⭐ EQUIPPED</span>`;
+                } else {
+                    actionHtml = `<button class="btn-shop-equip" onclick="app._handleShopEquip('${item.id}')">Equip</button>`;
+                }
+            } else {
+                if (canAfford) {
+                    actionHtml = `<button class="btn-shop-buy" onclick="app._handleShopBuy('${item.id}')">Unlock ${priceStr}</button>`;
+                } else {
+                    const needed = (item.price - this.profile.menu_balance).toFixed(0);
+                    actionHtml = `<button class="shop-btn-locked" disabled>${priceStr} (Need +$${needed})</button>`;
+                }
+            }
+
+            const previewBtn = item.category === "animation"
+                ? `<button class="btn-shop-preview" onclick="app._previewAnimation('${item.id}')">🎬 Preview</button>`
+                : "";
+
+            html += `
+                <div class="shop-item-card">
+                    <div class="shop-item-icon">${item.icon}</div>
+                    <div class="shop-item-info">
+                        <div class="shop-item-title">${item.name}</div>
+                        <div class="shop-item-category">CATEGORY: ${item.category.toUpperCase()}</div>
+                        <div class="shop-item-desc">${item.description}</div>
+                    </div>
+                    <div class="shop-item-actions">
+                        ${previewBtn}
+                        ${actionHtml}
+                    </div>
+                </div>
+            `;
+        }
+        this.elShopItemsList.innerHTML = html;
+    }
+
+    _handleShopBuy(itemId) {
+        const item = SHOP_ITEMS.find(it => it.id === itemId);
+        if (!item || this.profile.inventory.includes(itemId)) return;
+
+        if (this.profile.menu_balance < item.price) {
+            alert("Insufficient Vault Balance! Bank more trading profits above $25k to unlock this perk.");
+            return;
+        }
+
+        this.profile.menu_balance = Math.round((this.profile.menu_balance - item.price) * 100) / 100;
+        this.profile.inventory.push(itemId);
+        if (item.category === "animation") {
+            this.profile.equipped_animation = itemId;
+        } else if (item.category === "theme") {
+            this.profile.equipped_theme = itemId;
+        }
+        this._saveProfile();
+        this._updateVaultDisplay();
+        this._renderShopItems();
+        alert(`🎉 Unlocked ${item.name}!\nIt has been automatically equipped.`);
+    }
+
+    _handleShopEquip(itemId) {
+        const item = SHOP_ITEMS.find(it => it.id === itemId);
+        if (!item || !this.profile.inventory.includes(itemId)) return;
+
+        if (item.category === "animation") {
+            this.profile.equipped_animation = itemId;
+        } else if (item.category === "theme") {
+            this.profile.equipped_theme = itemId;
+        }
+        this._saveProfile();
+        this._renderShopItems();
+    }
+
+    _previewAnimation(animationId) {
+        if (window.winAnimations) {
+            window.winAnimations.play(animationId);
+        }
     }
 }
 

@@ -66,7 +66,7 @@ class Stock {
         this.baseVolatility = volatility;
         this.volatility = volatility;
         this.drift = 0.0;
-        this.driftDecay = 0.92;
+        this.driftDecay = 0.958;
         this.tickPerCandle = tickPerCandle;
         this.prng = prng || new SeededRandom();
 
@@ -99,7 +99,7 @@ class Stock {
 
         for (let i = 0; i < numCandles; i++) {
             const openP = price;
-            const ret = this.prng.gauss(0, this.baseVolatility * 2.5);
+            const ret = this.prng.gauss(0, this.baseVolatility * 1.5);
             const closeP = Math.max(0.5, openP * (1.0 + ret));
             const highP = Math.max(openP, closeP) * (1.0 + Math.abs(this.prng.gauss(0, this.baseVolatility * 1.5)));
             let lowP = Math.min(openP, closeP) * (1.0 - Math.abs(this.prng.gauss(0, this.baseVolatility * 1.5)));
@@ -134,10 +134,10 @@ class Stock {
         this.currentTickCount = 0;
     }
 
-    applyShock(priceMultiplier, extraDrift, extraVolatility = 0.02) {
+    applyShock(priceMultiplier, extraDrift, extraVolatility = 0.015) {
         this.price = Math.max(0.10, Number((this.price * priceMultiplier).toFixed(2)));
-        this.drift += extraDrift;
-        this.volatility = Math.min(0.08, this.volatility + extraVolatility);
+        this.drift = Math.max(-0.045, Math.min(0.045, this.drift + extraDrift));
+        this.volatility = Math.min(0.05, this.volatility + extraVolatility);
 
         if (this.currentCandle) {
             this.currentCandle.high = Math.max(this.currentCandle.high, this.price);
@@ -153,18 +153,18 @@ class Stock {
         this.volatility += (this.baseVolatility - this.volatility) * 0.05;
 
         let microSpike = 0.0;
-        if (this.prng.random() < 0.04) {
-            microSpike = this.prng.choice([-1, 1]) * this.prng.uniform(0.01, 0.04);
+        if (this.prng.random() < 0.03) {
+            microSpike = this.prng.choice([-1, 1]) * this.prng.uniform(0.005, 0.02);
         }
 
         const shock = this.prng.gauss(0, this.volatility) + this.drift + (marketTrend * 0.5) + microSpike;
         let delta = this.price * shock;
 
-        // Hard bound per-tick moves to avoid explosive overflows
-        const maxDelta = this.price * 0.15;
+        // Hard bound per-tick moves to avoid violent single-tick spikes
+        const maxDelta = this.price * 0.06;
         delta = Math.max(-maxDelta, Math.min(maxDelta, delta));
 
-        this.price = Math.max(0.05, Number((this.price + delta).toFixed(2)));
+        this.price = Math.max(0.10, Number((this.price + delta).toFixed(2)));
 
         // Update live forming candle
         if (this.currentCandle) {
@@ -351,7 +351,7 @@ class MarketEngine {
         this.ticksSinceNews += 1;
 
         let triggeredNews = null;
-        if (this.ticksSinceNews >= 15 && this.prng.random() < diffCfg.newsProb) {
+        if (this.ticksSinceNews >= 20 && this.prng.random() < diffCfg.newsProb) {
             triggeredNews = this.newsGen.generateRandomNews(Object.values(this.stocks));
             this.newsFeed.unshift(triggeredNews);
             if (this.newsFeed.length > 50) this.newsFeed.pop();
@@ -361,7 +361,7 @@ class MarketEngine {
             // Apply shock
             if (triggeredNews.ticker === "MARKET") {
                 for (const st of Object.values(this.stocks)) {
-                    const mult = 1.0 + (triggeredNews.shockPct * this.prng.uniform(0.6, 1.2));
+                    const mult = 1.0 + (triggeredNews.shockPct * this.prng.uniform(0.6, 1.1));
                     st.applyShock(mult, triggeredNews.momentumDrift * 0.5);
                 }
             } else if (this.stocks[triggeredNews.ticker]) {
@@ -520,6 +520,21 @@ class MarketEngine {
         } else {
             return this.cover(ticker, Math.abs(pos.shares));
         }
+    }
+
+    bankProfit() {
+        for (const ticker in this.positions) {
+            const pos = this.positions[ticker];
+            if (pos && pos.shares !== 0) {
+                this.closePosition(ticker);
+            }
+        }
+        const profit = Math.max(0.0, this.totalEquity - this.initialCash);
+        if (profit > 0) {
+            this.cash = this.initialCash;
+            this.realizedPnL = 0.0;
+        }
+        return profit;
     }
 
     resetAccount(seed = null) {

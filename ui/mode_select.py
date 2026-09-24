@@ -112,6 +112,9 @@ class FirebaseConfigDialog(tk.Toplevel):
         self.destroy()
 
 
+_HAS_PROMPTED_UPDATE_SESSION = False
+
+
 class ModeSelectWindow(tk.Tk):
     """
     Startup Launcher window where user selects between Solo Sandbox and 1v1 Online PvP Duel.
@@ -138,12 +141,13 @@ class ModeSelectWindow(tk.Tk):
         self._cancel_search = threading.Event()
         self._search_thread: Optional[threading.Thread] = None
         self._latest_update_info: Optional[Dict[str, Any]] = None
+        self._update_dialog: Optional[UpdateDialog] = None
 
         self._center_window()
         self._build_ui()
 
-        # Non-intrusive background check for updates after window loads
-        self._update_job = self.after(1500, self._check_updates_silent)
+        # Automatically look for updates when the app is launched
+        self._update_job = self.after(800, self._check_updates_on_launch)
 
     def destroy(self):
         if getattr(self, "_update_job", None):
@@ -481,30 +485,61 @@ class ModeSelectWindow(tk.Tk):
     def _on_check_updates_click(self):
         """User clicked 'Check for Updates' button."""
         if self._latest_update_info and self._latest_update_info.get("update_available"):
-            UpdateDialog(self, self._latest_update_info)
+            if not (self._update_dialog and self._update_dialog.winfo_exists()):
+                self._update_dialog = UpdateDialog(self, self._latest_update_info)
             return
 
         self.btn_update.config(text="⏳ Checking...", state=tk.DISABLED)
 
         def worker():
             res = check_for_update(current_version=__version__)
-            self.after(0, lambda: self._handle_update_check_result(res, user_initiated=True))
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _check_updates_silent(self):
-        """Silently checks for updates in background on launch without blocking or dialogs."""
-        def worker():
             try:
-                res = check_for_update(current_version=__version__)
-                if res.get("update_available"):
-                    self.after(0, lambda: self._handle_update_check_result(res, user_initiated=False))
+                self.after(0, lambda: self._handle_update_check_result(res, user_initiated=True))
             except Exception:
                 pass
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _handle_update_check_result(self, res: Dict[str, Any], user_initiated: bool):
+    def _check_updates_on_launch(self):
+        """
+        Automatically looks for updates when the app is launched.
+        Runs asynchronously in the background. If an update is available,
+        automatically prompts the user with the UpdateDialog.
+        """
+        global _HAS_PROMPTED_UPDATE_SESSION
+        try:
+            if not self.winfo_exists():
+                return
+        except Exception:
+            return
+
+        try:
+            self.btn_update.config(text="🔄 Checking updates...")
+        except Exception:
+            pass
+
+        def worker():
+            try:
+                res = check_for_update(current_version=__version__)
+                should_prompt = not _HAS_PROMPTED_UPDATE_SESSION
+                self.after(0, lambda: self._handle_update_check_result(
+                    res, user_initiated=False, auto_prompt=should_prompt
+                ))
+            except Exception:
+                try:
+                    self.after(0, lambda: self.btn_update.config(
+                        text="🔄 Check for Updates", bg="#1e222d", fg=self.TEXT_MUTED
+                    ))
+                except Exception:
+                    pass
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _handle_update_check_result(self, res: Dict[str, Any], user_initiated: bool = False, auto_prompt: bool = False):
+        global _HAS_PROMPTED_UPDATE_SESSION
+        if not self.winfo_exists():
+            return
+
         self.btn_update.config(state=tk.NORMAL)
         if res.get("update_available"):
             self._latest_update_info = res
@@ -516,8 +551,13 @@ class ModeSelectWindow(tk.Tk):
                 activebackground="#00e676",
                 activeforeground="#000000"
             )
-            if user_initiated:
-                UpdateDialog(self, res)
+
+            is_queueing = bool(self._search_thread and self._search_thread.is_alive())
+            already_open = bool(self._update_dialog is not None and self._update_dialog.winfo_exists())
+
+            if (user_initiated or auto_prompt) and not is_queueing and not already_open:
+                _HAS_PROMPTED_UPDATE_SESSION = True
+                self._update_dialog = UpdateDialog(self, res)
         else:
             self.btn_update.config(text="🔄 Check for Updates", bg="#1e222d", fg=self.TEXT_MUTED)
             if user_initiated:

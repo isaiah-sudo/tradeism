@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Download Windows Installer](https://img.shields.io/badge/Installer-DayTradeSim--Setup--v1.7.0.exe-00E676?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/tradeism/releases/latest/download/DayTradeSim-Setup-v1.7.0.exe)
+[![Download Windows Installer](https://img.shields.io/badge/Installer-DayTradeSim--Setup--v1.8.0.exe-00E676?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/tradeism/releases/latest/download/DayTradeSim-Setup-v1.8.0.exe)
 [![Download Portable EXE](https://img.shields.io/badge/Portable-DayTradeSim.exe-00B0FF?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/tradeism/releases/latest/download/DayTradeSim.exe)
 [![GitHub Release](https://img.shields.io/github/v/release/isaiah-sudo/tradeism?style=for-the-badge&color=2962FF)](https://github.com/isaiah-sudo/tradeism/releases/latest)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero%20External-FF9800?style=for-the-badge)](requirements.txt)
@@ -142,7 +142,7 @@ Hotkeys work **everywhere** — including while searching stocks or typing share
 Anyone on Windows can download and play immediately—**no Python installation or setup required!**
 
 ### Option 1: Official Windows Installer (Recommended)
-👉 [**Download DayTradeSim-Setup-v1.7.0.exe**](https://github.com/isaiah-sudo/tradeism/releases/latest/download/DayTradeSim-Setup-v1.7.0.exe)
+👉 [**Download DayTradeSim-Setup-v1.8.0.exe**](https://github.com/isaiah-sudo/tradeism/releases/latest/download/DayTradeSim-Setup-v1.8.0.exe)
 - 🚀 Official setup wizard
 - 🖥️ Creates a **Desktop shortcut** with custom trading icon
 - 📌 Adds a **Start Menu shortcut** for instant access

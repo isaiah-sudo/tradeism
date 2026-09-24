@@ -10,7 +10,7 @@ import threading
 from unittest.mock import MagicMock, patch
 
 from version import __version__, GITHUB_REPO
-from network.updater import parse_version, check_for_update, download_file
+from network.updater import parse_version, check_for_update, download_file, build_update_script
 from ui.app import DayTradeSimApp
 from ui.mode_select import ModeSelectWindow
 
@@ -104,6 +104,42 @@ class TestUpdaterLogic(unittest.TestCase):
                 os.remove(tmp_path)
 
 
+    def test_build_update_script_installer(self):
+        script = build_update_script(
+            downloaded_file="C:\\temp\\Setup.exe",
+            target_exe="C:\\app\\DayTradeSim.exe",
+            parent_pid=12345,
+            is_installer=True
+        )
+        # Must clear PyInstaller temporary directories and env vars
+        self.assertIn("set _MEIPASS2=", script)
+        self.assertIn("set _MEIPASS=", script)
+        self.assertIn("set PYTHONHOME=", script)
+        self.assertIn("set PYTHONPATH=", script)
+
+        # Must wait for parent PID to release locks
+        self.assertIn('tasklist /FI "PID eq 12345"', script)
+
+        # Must execute installer with start /wait so cmd.exe doesn't race
+        self.assertIn('start /wait "" "C:\\temp\\Setup.exe" /SILENT', script)
+
+        # Must launch target_exe with proper working directory
+        self.assertIn('start "" /D "C:\\app" "C:\\app\\DayTradeSim.exe"', script)
+
+    def test_build_update_script_portable(self):
+        script = build_update_script(
+            downloaded_file="C:\\temp\\New.exe",
+            target_exe="C:\\app\\DayTradeSim.exe",
+            parent_pid=54321,
+            is_installer=False
+        )
+        self.assertIn("set _MEIPASS2=", script)
+        self.assertIn('tasklist /FI "PID eq 54321"', script)
+        self.assertIn(":copy_loop", script)
+        self.assertIn('copy /y "C:\\temp\\New.exe" "C:\\app\\DayTradeSim.exe"', script)
+        self.assertIn('start "" /D "C:\\app" "C:\\app\\DayTradeSim.exe"', script)
+
+
 class TestGUIIntegration(unittest.TestCase):
     def test_solo_return_to_menu_callback(self):
         returned = {"called": False}
@@ -144,16 +180,22 @@ class TestGUIIntegration(unittest.TestCase):
         self.assertIsNotNone(getattr(window, "btn_update", None))
         self.assertIn("Check for Updates", window.btn_update.cget("text"))
 
-        # Test state change when update is available
+        # Test state change when update is available (without auto-prompt)
         fake_update_info = {
             "update_available": True,
             "latest_version": "1.2.0",
             "release_notes": "Awesome features",
             "selected_asset": {"name": "DayTradeSim-Setup-v1.2.0.exe"}
         }
-        window._handle_update_check_result(fake_update_info, user_initiated=False)
+        window._handle_update_check_result(fake_update_info, user_initiated=False, auto_prompt=False)
         self.assertIn("1.2.0", window.btn_update.cget("text"))
         self.assertEqual(window._latest_update_info, fake_update_info)
+        self.assertIsNone(window._update_dialog)
+
+        # Test state change with auto_prompt=True (as when launched)
+        window._handle_update_check_result(fake_update_info, user_initiated=False, auto_prompt=True)
+        self.assertIsNotNone(window._update_dialog)
+        self.assertTrue(window._update_dialog.winfo_exists())
 
         window.destroy()
 

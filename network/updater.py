@@ -140,6 +140,107 @@ def download_file(
         raise e
 
 
+def build_update_script(
+    downloaded_file: str,
+    target_exe: str,
+    parent_pid: int,
+    is_installer: bool = True
+) -> str:
+    """
+    Constructs the helper Windows batch script content to apply update and restart the app.
+    Unsets PyInstaller temporary environment variables (_MEIPASS2, etc.) to prevent DLL load errors.
+    """
+    downloaded_file = os.path.abspath(downloaded_file)
+    target_exe = os.path.abspath(target_exe)
+    target_dir = os.path.dirname(target_exe)
+
+    if is_installer:
+        return f"""@echo off
+setlocal
+:: 1. Clear PyInstaller and Python environment variables so the relaunched application unpacks freshly
+set _MEIPASS2=
+set _MEIPASS=
+set PYTHONHOME=
+set PYTHONPATH=
+set TCL_LIBRARY=
+set TK_LIBRARY=
+set PYI_SPLASH_IPC=
+
+:: 2. Wait for parent application process (PID {parent_pid}) to completely terminate and release file locks
+set RETRIES=0
+:wait_parent
+tasklist /FI "PID eq {parent_pid}" 2>nul | findstr /C:"{parent_pid}" >nul
+if %ERRORLEVEL% equ 0 (
+    set /a RETRIES+=1
+    if %RETRIES% leq 30 (
+        timeout /t 1 /nobreak >nul
+        goto wait_parent
+    )
+)
+timeout /t 2 /nobreak >nul
+
+:: 3. Execute Inno Setup installer silently and WAIT until completion
+start /wait "" "{downloaded_file}" /SILENT /SP- /SUPPRESSMSGBOXES /NORESTART
+
+:: 4. Small pause to ensure file handles and temporary directories are released
+timeout /t 1 /nobreak >nul
+
+:: 5. Launch newly installed application with clean environment
+if exist "{target_exe}" (
+    start "" /D "{target_dir}" "{target_exe}"
+)
+
+:: 6. Self delete runner batch file
+(goto) 2>nul & del "%~f0"
+"""
+    else:
+        return f"""@echo off
+setlocal
+:: 1. Clear PyInstaller and Python environment variables so the relaunched application unpacks freshly
+set _MEIPASS2=
+set _MEIPASS=
+set PYTHONHOME=
+set PYTHONPATH=
+set TCL_LIBRARY=
+set TK_LIBRARY=
+set PYI_SPLASH_IPC=
+
+:: 2. Wait for parent application process (PID {parent_pid}) to completely terminate and release file locks
+set RETRIES=0
+:wait_parent
+tasklist /FI "PID eq {parent_pid}" 2>nul | findstr /C:"{parent_pid}" >nul
+if %ERRORLEVEL% equ 0 (
+    set /a RETRIES+=1
+    if %RETRIES% leq 30 (
+        timeout /t 1 /nobreak >nul
+        goto wait_parent
+    )
+)
+timeout /t 2 /nobreak >nul
+
+:: 3. Overwrite current executable with updated file (with retry loop for transient locks)
+set COPY_RETRIES=0
+:copy_loop
+copy /y "{downloaded_file}" "{target_exe}" >nul
+if %ERRORLEVEL% neq 0 (
+    set /a COPY_RETRIES+=1
+    if %COPY_RETRIES% leq 15 (
+        timeout /t 1 /nobreak >nul
+        goto copy_loop
+    )
+)
+del /f /q "{downloaded_file}" >nul
+
+:: 4. Launch updated application with clean environment
+if exist "{target_exe}" (
+    start "" /D "{target_dir}" "{target_exe}"
+)
+
+:: 5. Self delete runner batch file
+(goto) 2>nul & del "%~f0"
+"""
+
+
 def apply_update_and_restart(downloaded_file: str, is_installer: bool = True) -> None:
     """
     Applies the downloaded update and relaunches the application.
@@ -147,49 +248,51 @@ def apply_update_and_restart(downloaded_file: str, is_installer: bool = True) ->
     """
     current_exe = sys.executable
     is_frozen = getattr(sys, "frozen", False)
+    current_pid = os.getpid()
     temp_dir = tempfile.gettempdir()
     runner_bat = os.path.join(temp_dir, "daytradesim_update_runner.bat")
 
-    if is_installer:
-        # Launch the Inno Setup installer silently.
-        # Once it completes, it restarts DayTradeSim.exe.
-        bat_content = f"""@echo off
-setlocal
-:: Wait for current application process to release locks
-timeout /t 1 /nobreak >nul
-:: Execute installer silently
-"{downloaded_file}" /SILENT /SP- /SUPPRESSMSGBOXES /NORESTART
-:: Launch newly installed app
-if exist "{current_exe}" (
-    start "" "{current_exe}"
-)
-:: Self delete
-(goto) 2>nul & del "%~f0"
-"""
+    if is_frozen or not is_installer:
+        target_exe = current_exe
     else:
-        # Portable EXE update: replace current executable
-        bat_content = f"""@echo off
-setlocal
-:: Wait for current application process to release locks
-timeout /t 1 /nobreak >nul
-:: Overwrite current executable with updated file
-copy /y "{downloaded_file}" "{current_exe}" >nul
-del /f /q "{downloaded_file}" >nul
-:: Launch updated executable
-start "" "{current_exe}"
-:: Self delete
-(goto) 2>nul & del "%~f0"
-"""
+        # If running from python source in development mode
+        candidates = [
+            os.path.expandvars(r"%LOCALAPPDATA%\Programs\Day Trading Simulator\DayTradeSim.exe"),
+            os.path.expandvars(r"%ProgramFiles%\Day Trading Simulator\DayTradeSim.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\Day Trading Simulator\DayTradeSim.exe"),
+        ]
+        target_exe = next((cand for cand in candidates if os.path.exists(cand)), candidates[0])
+
+    bat_content = build_update_script(
+        downloaded_file=downloaded_file,
+        target_exe=target_exe,
+        parent_pid=current_pid,
+        is_installer=is_installer
+    )
 
     with open(runner_bat, "w", encoding="utf-8") as f:
         f.write(bat_content)
 
-    # Spawn runner script detached from current process
-    DETACHED_PROCESS = 0x00000008
+    # Clean PyInstaller environment variables in child process
+    clean_env = os.environ.copy()
+    for key in [
+        "_MEIPASS2",
+        "_MEIPASS",
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "TCL_LIBRARY",
+        "TK_LIBRARY",
+        "PYI_SPLASH_IPC",
+    ]:
+        clean_env.pop(key, None)
+
+    # Spawn runner script detached with no console window
+    CREATE_NO_WINDOW = 0x08000000
     CREATE_NEW_PROCESS_GROUP = 0x00000200
     subprocess.Popen(
         ["cmd.exe", "/c", runner_bat],
-        creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+        creationflags=CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP,
+        env=clean_env,
         close_fds=True
     )
 
@@ -420,6 +523,11 @@ class UpdateDialog(tk.Toplevel):
 
         temp_dir = tempfile.gettempdir()
         dest_path = os.path.join(temp_dir, asset_name)
+        if os.path.exists(dest_path):
+            try:
+                os.remove(dest_path)
+            except Exception:
+                dest_path = os.path.join(temp_dir, f"update_{int(time.time())}_{asset_name}")
 
         self.is_downloading = True
         self.btn_update.config(state=tk.DISABLED, bg="#2a2e39", text="⏳ Downloading...")

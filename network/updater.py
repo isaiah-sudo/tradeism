@@ -216,8 +216,9 @@ class UpdateDialog(tk.Toplevel):
         self.is_downloading = False
 
         self.title(f"⚡ Update Available • v{self.update_info.get('latest_version', '')}")
-        self.geometry("560x480")
-        self.resizable(False, False)
+        self.geometry("560x520")
+        self.minsize(520, 460)
+        self.resizable(True, True)
         self.configure(bg=self.THEME_BG)
         self.transient(parent)
         self.grab_set()
@@ -233,84 +234,64 @@ class UpdateDialog(tk.Toplevel):
         ph = parent.winfo_height() or 580
         px = parent.winfo_rootx()
         py = parent.winfo_rooty()
-        self.geometry(f"+{px + (pw - 560)//2}+{py + (ph - 480)//2}")
+        self.geometry(f"+{px + (pw - 560)//2}+{py + (ph - 520)//2}")
 
     def _build_ui(self):
-        # Header banner
-        hdr = tk.Frame(self, bg=self.THEME_BG)
-        hdr.pack(fill=tk.X, padx=24, pady=(18, 8))
+        # 1. Action Buttons - PACKED TO BOTTOM FIRST so they are NEVER cut off
+        btn_f = tk.Frame(self, bg=self.THEME_BG)
+        btn_f.pack(side=tk.BOTTOM, fill=tk.X, padx=24, pady=(10, 18))
 
-        badge = tk.Label(
-            hdr,
-            text="🚀 NEW UPDATE READY",
-            font=("Segoe UI", 9, "bold"),
-            fg="#00e676",
-            bg="#162e21",
-            padx=8,
-            pady=3
-        )
-        badge.pack(anchor="w")
-
-        v_curr = self.update_info.get("current_version", __version__)
-        v_latest = self.update_info.get("latest_version", "")
-        title_lbl = tk.Label(
-            hdr,
-            text=f"Day Trading Simulator v{v_latest}",
-            font=("Segoe UI", 16, "bold"),
+        self.btn_update = tk.Button(
+            btn_f,
+            text="⚡ Update Now (Auto-Install)",
+            font=("Segoe UI", 10, "bold"),
+            bg="#00c853",
             fg="#ffffff",
-            bg=self.THEME_BG
+            activebackground="#00e676",
+            activeforeground="#000000",
+            relief=tk.FLAT,
+            padx=16,
+            pady=7,
+            cursor="hand2",
+            command=self._start_download
         )
-        title_lbl.pack(anchor="w", pady=(6, 2))
+        self.btn_update.pack(side=tk.LEFT)
 
-        sub_lbl = tk.Label(
-            hdr,
-            text=f"Current installed version: v{v_curr}  ➜  Latest release: v{v_latest}",
+        btn_view = tk.Button(
+            btn_f,
+            text="🌐 Release Page",
             font=("Segoe UI", 9),
-            fg=self.TEXT_MUTED,
-            bg=self.THEME_BG
+            bg="#1e222d",
+            fg="#848e9c",
+            activebackground="#2a2e39",
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            padx=10,
+            pady=7,
+            cursor="hand2",
+            command=self._open_release_url
         )
-        sub_lbl.pack(anchor="w")
+        btn_view.pack(side=tk.LEFT, padx=8)
 
-        # Release Notes Card
-        card = tk.Frame(self, bg=self.CARD_BG, bd=1, relief=tk.SOLID)
-        card.pack(fill=tk.BOTH, expand=True, padx=24, pady=8)
-
-        tk.Label(
-            card,
-            text="WHAT'S NEW IN THIS RELEASE:",
-            font=("Segoe UI", 8, "bold"),
-            fg=self.TEXT_MUTED,
-            bg=self.CARD_BG
-        ).pack(anchor="w", padx=12, pady=(10, 4))
-
-        # Text area with scrollbar
-        text_f = tk.Frame(card, bg=self.CARD_BG)
-        text_f.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
-
-        scrollbar = tk.Scrollbar(text_f)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self.txt_notes = tk.Text(
-            text_f,
-            wrap=tk.WORD,
+        self.btn_cancel = tk.Button(
+            btn_f,
+            text="Later",
             font=("Segoe UI", 9),
-            bg="#0e1117",
-            fg="#c5c8d1",
-            bd=0,
-            padx=8,
-            pady=8,
-            yscrollcommand=scrollbar.set
+            bg="#1e222d",
+            fg="#848e9c",
+            activebackground="#2a2e39",
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            padx=14,
+            pady=7,
+            cursor="hand2",
+            command=self._on_close
         )
-        self.txt_notes.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.txt_notes.yview)
+        self.btn_cancel.pack(side=tk.RIGHT)
 
-        notes_content = self.update_info.get("release_notes", "").strip() or "General improvements and bug fixes."
-        self.txt_notes.insert(tk.END, notes_content)
-        self.txt_notes.config(state=tk.DISABLED)
-
-        # Download / Progress container
+        # 2. Download / Progress container - PACKED TO BOTTOM ABOVE BUTTONS
         self.prog_f = tk.Frame(self, bg=self.THEME_BG)
-        self.prog_f.pack(fill=tk.X, padx=24, pady=4)
+        self.prog_f.pack(side=tk.BOTTOM, fill=tk.X, padx=24, pady=(4, 6))
 
         self.lbl_status = tk.Label(
             self.prog_f,
@@ -332,57 +313,78 @@ class UpdateDialog(tk.Toplevel):
         )
         self.progress_bar.pack(fill=tk.X)
 
-        # Action Buttons
-        btn_f = tk.Frame(self, bg=self.THEME_BG)
-        btn_f.pack(fill=tk.X, padx=24, pady=(12, 18))
+        # 3. Header banner - PACKED TO TOP
+        hdr = tk.Frame(self, bg=self.THEME_BG)
+        hdr.pack(side=tk.TOP, fill=tk.X, padx=24, pady=(16, 6))
 
-        self.btn_update = tk.Button(
-            btn_f,
-            text="⚡ Update Now (Auto-Install)",
-            font=("Segoe UI", 10, "bold"),
-            bg="#00c853",
+        badge = tk.Label(
+            hdr,
+            text="🚀 NEW UPDATE READY",
+            font=("Segoe UI", 9, "bold"),
+            fg="#00e676",
+            bg="#162e21",
+            padx=8,
+            pady=3
+        )
+        badge.pack(anchor="w")
+
+        v_curr = self.update_info.get("current_version", __version__)
+        v_latest = self.update_info.get("latest_version", "")
+        title_lbl = tk.Label(
+            hdr,
+            text=f"Day Trading Simulator v{v_latest}",
+            font=("Segoe UI", 16, "bold"),
             fg="#ffffff",
-            activebackground="#00e676",
-            activeforeground="#000000",
-            relief=tk.FLAT,
-            padx=16,
-            pady=6,
-            cursor="hand2",
-            command=self._start_download
+            bg=self.THEME_BG
         )
-        self.btn_update.pack(side=tk.LEFT)
+        title_lbl.pack(anchor="w", pady=(4, 2))
 
-        btn_view = tk.Button(
-            btn_f,
-            text="🌐 Release Page",
+        sub_lbl = tk.Label(
+            hdr,
+            text=f"Current installed version: v{v_curr}  ➜  Latest release: v{v_latest}",
             font=("Segoe UI", 9),
-            bg="#1e222d",
-            fg="#848e9c",
-            activebackground="#2a2e39",
-            activeforeground="#ffffff",
-            relief=tk.FLAT,
-            padx=10,
-            pady=6,
-            cursor="hand2",
-            command=self._open_release_url
+            fg=self.TEXT_MUTED,
+            bg=self.THEME_BG
         )
-        btn_view.pack(side=tk.LEFT, padx=8)
+        sub_lbl.pack(anchor="w")
 
-        self.btn_cancel = tk.Button(
-            btn_f,
-            text="Later",
+        # 4. Release Notes Card - FILLS REMAINING EXPANDABLE SPACE IN THE MIDDLE
+        card = tk.Frame(self, bg=self.CARD_BG, bd=1, relief=tk.SOLID)
+        card.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=24, pady=(4, 8))
+
+        tk.Label(
+            card,
+            text="WHAT'S NEW IN THIS RELEASE:",
+            font=("Segoe UI", 8, "bold"),
+            fg=self.TEXT_MUTED,
+            bg=self.CARD_BG
+        ).pack(anchor="w", padx=12, pady=(8, 4))
+
+        # Text area with scrollbar
+        text_f = tk.Frame(card, bg=self.CARD_BG)
+        text_f.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 8))
+
+        scrollbar = tk.Scrollbar(text_f)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.txt_notes = tk.Text(
+            text_f,
+            wrap=tk.WORD,
             font=("Segoe UI", 9),
-            bg="#1e222d",
-            fg="#848e9c",
-            activebackground="#2a2e39",
-            activeforeground="#ffffff",
-            relief=tk.FLAT,
-            padx=12,
-            pady=6,
-            cursor="hand2",
-            command=self._on_close
+            bg="#0e1117",
+            fg="#c5c8d1",
+            bd=0,
+            height=6,
+            padx=8,
+            pady=8,
+            yscrollcommand=scrollbar.set
         )
-        self.btn_cancel.pack(side=tk.RIGHT)
+        self.txt_notes.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.txt_notes.yview)
+
+        notes_content = self.update_info.get("release_notes", "").strip() or "General improvements and bug fixes."
+        self.txt_notes.insert(tk.END, notes_content)
+        self.txt_notes.config(state=tk.DISABLED)
 
     def _open_release_url(self):
         url = self.update_info.get("release_url", f"https://github.com/{GITHUB_REPO}/releases/latest")

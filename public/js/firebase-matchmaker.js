@@ -160,12 +160,20 @@ class FirebaseMatchmaker {
         return null;
     }
 
-    async _firestoreSet(path, data) {
+    async _firestoreSet(path, data, merge = true) {
         const headers = { "Content-Type": "application/json" };
         if (this.idToken) headers["Authorization"] = `Bearer ${this.idToken}`;
         try {
             const body = dictToFirestoreDoc(data);
-            const res = await fetch(`${this.firestoreBaseUrl}/${path}`, {
+            let url = `${this.firestoreBaseUrl}/${path}`;
+            if (merge) {
+                const keys = Object.keys(data);
+                if (keys.length > 0) {
+                    const maskParams = keys.map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
+                    url += `?${maskParams}`;
+                }
+            }
+            const res = await fetch(url, {
                 method: "PATCH",
                 headers,
                 body: JSON.stringify(body)
@@ -301,9 +309,9 @@ class FirebaseMatchmaker {
                 timestamp: now
             });
 
-            // Poll for match assignment (up to 15s before deploying dynamic rival)
+            // Poll for match assignment (up to 12s before deploying dynamic rival)
             const pollStart = Date.now();
-            while ((Date.now() - pollStart) < 15000) {
+            while ((Date.now() - pollStart) < 12000) {
                 if (abortSignal && abortSignal.aborted) {
                     await this._firestoreDelete(queuePath);
                     return null;
@@ -426,6 +434,29 @@ class FirebaseMatchmaker {
             };
         }
 
+    async getLatestOpponentMetrics() {
+        if (this.opponentBot) {
+            return this.opponentBot.tick();
+        }
+
+        if (!this.activeMatchId || !this.playerSlot) return null;
+        const oppSlot = this.playerSlot === "player1" ? "player2" : "player1";
+
+        try {
+            const matchDoc = await this._firestoreGet(`matches/${this.activeMatchId}`);
+            if (matchDoc && matchDoc[oppSlot]) {
+                const oppData = matchDoc[oppSlot];
+                return {
+                    name: oppData.name || "Opponent",
+                    equity: oppData.equity !== undefined ? oppData.equity : 25000.0,
+                    pnl: oppData.pnl !== undefined ? oppData.pnl : 0.0,
+                    pnl_pct: oppData.pnl_pct !== undefined ? oppData.pnl_pct : 0.0,
+                    status: oppData.status || "playing"
+                };
+            }
+        } catch (e) {
+            console.error("[Firebase] getLatestOpponentMetrics error:", e);
+        }
         return null;
     }
 

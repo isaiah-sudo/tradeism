@@ -5,6 +5,8 @@ import time
 import random
 from typing import Callable, Optional, Dict, Any
 from network.firebase_manager import FirebaseManager
+from version import __version__
+from network.updater import check_for_update, UpdateDialog
 
 class FirebaseConfigDialog(tk.Toplevel):
     """Dialog allowing user to view and paste Firebase API Key and Project ID."""
@@ -132,9 +134,13 @@ class ModeSelectWindow(tk.Tk):
         self.fb_manager = FirebaseManager()
         self._cancel_search = threading.Event()
         self._search_thread: Optional[threading.Thread] = None
+        self._latest_update_info: Optional[Dict[str, Any]] = None
 
         self._center_window()
         self._build_ui()
+
+        # Non-intrusive background check for updates after window loads
+        self.after(1500, self._check_updates_silent)
 
     def _center_window(self):
         self.update_idletasks()
@@ -159,15 +165,33 @@ class ModeSelectWindow(tk.Tk):
 
         tk.Label(
             header_f,
-            text="CHOOSE YOUR SIMULATION MODE",
+            text=f"CHOOSE YOUR SIMULATION MODE  •  v{__version__}",
             font=("Segoe UI", 10, "bold"),
             fg=self.TEXT_MUTED,
             bg=self.THEME_BG
         ).pack(pady=(2, 0))
 
-        # Config button on top-right
+        # Top-Right Control Bar (Check for Updates & Firebase Config)
+        top_ctrls = tk.Frame(self, bg=self.THEME_BG)
+        top_ctrls.place(relx=1.0, y=18, anchor="ne", x=-25)
+
+        self.btn_update = tk.Button(
+            top_ctrls,
+            text="🔄 Check for Updates",
+            font=("Segoe UI", 8),
+            bg="#1e222d",
+            fg=self.TEXT_MUTED,
+            activebackground="#2a2e39",
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            padx=8, pady=3,
+            cursor="hand2",
+            command=self._on_check_updates_click
+        )
+        self.btn_update.pack(side=tk.LEFT, padx=(0, 6))
+
         btn_cfg = tk.Button(
-            self,
+            top_ctrls,
             text="⚙️ Firebase Config",
             font=("Segoe UI", 8),
             bg="#1e222d",
@@ -179,7 +203,7 @@ class ModeSelectWindow(tk.Tk):
             cursor="hand2",
             command=self._open_config_dialog
         )
-        btn_cfg.place(x=710, y=18)
+        btn_cfg.pack(side=tk.LEFT)
 
         # 2. Dual Selection Cards Container
         cards_f = tk.Frame(self, bg=self.THEME_BG)
@@ -384,3 +408,57 @@ class ModeSelectWindow(tk.Tk):
     def _launch_online(self, match_data: Dict[str, Any]):
         self.destroy()
         self.on_start_online(match_data, self.fb_manager)
+
+    def _on_check_updates_click(self):
+        """User clicked 'Check for Updates' button."""
+        if self._latest_update_info and self._latest_update_info.get("update_available"):
+            UpdateDialog(self, self._latest_update_info)
+            return
+
+        self.btn_update.config(text="⏳ Checking...", state=tk.DISABLED)
+
+        def worker():
+            res = check_for_update(current_version=__version__)
+            self.after(0, lambda: self._handle_update_check_result(res, user_initiated=True))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _check_updates_silent(self):
+        """Silently checks for updates in background on launch without blocking or dialogs."""
+        def worker():
+            try:
+                res = check_for_update(current_version=__version__)
+                if res.get("update_available"):
+                    self.after(0, lambda: self._handle_update_check_result(res, user_initiated=False))
+            except Exception:
+                pass
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _handle_update_check_result(self, res: Dict[str, Any], user_initiated: bool):
+        self.btn_update.config(state=tk.NORMAL)
+        if res.get("update_available"):
+            self._latest_update_info = res
+            v_latest = res.get("latest_version", "")
+            self.btn_update.config(
+                text=f"🚀 Update Ready (v{v_latest})",
+                bg="#00c853",
+                fg="#ffffff",
+                activebackground="#00e676",
+                activeforeground="#000000"
+            )
+            if user_initiated:
+                UpdateDialog(self, res)
+        else:
+            self.btn_update.config(text="🔄 Check for Updates", bg="#1e222d", fg=self.TEXT_MUTED)
+            if user_initiated:
+                if "error" in res:
+                    messagebox.showerror(
+                        "Update Check",
+                        f"Could not check for updates:\n{res['error']}\n\nPlease check your internet connection."
+                    )
+                else:
+                    messagebox.showinfo(
+                        "You're Up to Date!",
+                        f"Day Trading Simulator v{__version__} is currently the newest version available."
+                    )

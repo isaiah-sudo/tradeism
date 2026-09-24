@@ -14,6 +14,14 @@ class Candle:
     close: float
     volume: int
 
+@dataclass
+class TradeMarker:
+    candle_timestamp: float
+    action: str          # BUY, SELL, SHORT, COVER
+    shares: int
+    price: float
+    time_str: str
+
 class Stock:
     def __init__(self, ticker: str, name: str, sector: str, initial_price: float, volatility: float, tick_per_candle: int = 5):
         self.ticker = ticker
@@ -33,6 +41,7 @@ class Stock:
         self.candles: Deque[Candle] = deque(maxlen=self.max_candles)
         self.current_tick_count = 0
         self.current_candle: Optional[Candle] = None
+        self.trade_markers: List[TradeMarker] = []
 
         # Pre-seed historical candles so chart starts with rich data
         self._seed_history(50)
@@ -137,3 +146,18 @@ class Stock:
         if self.current_candle is not None:
             result.append(self.current_candle)
         return result
+
+    def add_trade_marker(self, action: str, shares: int, price: float, time_str: str) -> TradeMarker:
+        """Record trade execution marker for the active candle."""
+        ts = self.current_candle.timestamp if self.current_candle else (self.candles[-1].timestamp if self.candles else time.time())
+        marker = TradeMarker(
+            candle_timestamp=ts,
+            action=action,
+            shares=shares,
+            price=price,
+            time_str=time_str
+        )
+        self.trade_markers.append(marker)
+        if len(self.trade_markers) > 100:
+            self.trade_markers.pop(0)
+        return marker

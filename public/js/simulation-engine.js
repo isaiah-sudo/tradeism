@@ -74,8 +74,23 @@ class Stock {
         this.candles = [];
         this.currentTickCount = 0;
         this.currentCandle = null;
+        this.tradeMarkers = [];
 
         this._seedHistory(50);
+    }
+
+    addTradeMarker(action, shares, price, timeStr) {
+        const ts = this.currentCandle ? this.currentCandle.timestamp : (this.candles.length ? this.candles[this.candles.length - 1].timestamp : Date.now() / 1000);
+        const marker = {
+            candleTimestamp: ts,
+            action: action,
+            shares: shares,
+            price: Number(price.toFixed(2)),
+            timeStr: timeStr
+        };
+        this.tradeMarkers.push(marker);
+        if (this.tradeMarkers.length > 100) this.tradeMarkers.shift();
+        return marker;
     }
 
     _seedHistory(numCandles) {
@@ -190,6 +205,7 @@ class Position {
         this.ticker = ticker;
         this.shares = 0; // > 0 Long, < 0 Short, == 0 Flat
         this.avgPrice = 0.0;
+        this.lockedMargin = 0.0;
     }
 
     get side() {
@@ -297,14 +313,7 @@ class MarketEngine {
     }
 
     get totalEquity() {
-        let eq = this.cash;
-        for (const [ticker, pos] of Object.entries(this.positions)) {
-            if (pos.shares !== 0) {
-                const curPrice = this.stocks[ticker].price;
-                eq += pos.unrealizedPnL(curPrice);
-            }
-        }
-        return Number(eq.toFixed(2));
+        return Number((this.initialCash + this.realizedPnL + this.totalUnrealizedPnL).toFixed(2));
     }
 
     get totalUnrealizedPnL() {
@@ -375,12 +384,19 @@ class MarketEngine {
         const pos = this.positions[ticker];
         const stock = this.stocks[ticker];
         const price = stock.price;
-        const cost = shares * price;
 
         if (pos.shares < 0) {
-            return this.cover(ticker, shares);
+            const shortShs = Math.abs(pos.shares);
+            if (shares <= shortShs) {
+                return this.cover(ticker, shares);
+            } else {
+                if (!this.cover(ticker, shortShs)) return false;
+                const remaining = shares - shortShs;
+                return this.buy(ticker, remaining);
+            }
         }
 
+        const cost = shares * price;
         if (this.cash < cost) return false;
 
         this.cash -= cost;
@@ -391,6 +407,7 @@ class MarketEngine {
         const timeStr = new Date().toTimeString().split(' ')[0];
         this.trades.unshift(new TradeLog(timeStr, ticker, "BUY", shares, price));
         if (this.trades.length > 100) this.trades.pop();
+        stock.addTradeMarker("BUY", shares, price, timeStr);
         return true;
     }
 
@@ -414,6 +431,7 @@ class MarketEngine {
         const timeStr = new Date().toTimeString().split(' ')[0];
         this.trades.unshift(new TradeLog(timeStr, ticker, "SELL", sharesToSell, price, pnl));
         if (this.trades.length > 100) this.trades.pop();
+        stock.addTradeMarker("SELL", sharesToSell, price, timeStr);
         return true;
     }
 
@@ -422,15 +440,25 @@ class MarketEngine {
         const pos = this.positions[ticker];
         const stock = this.stocks[ticker];
         const price = stock.price;
+
+        if (pos.shares > 0) {
+            const longShs = pos.shares;
+            if (shares <= longShs) {
+                return this.sell(ticker, shares);
+            } else {
+                if (!this.sell(ticker, longShs)) return false;
+                const remaining = shares - longShs;
+                return this.short(ticker, remaining);
+            }
+        }
+
         const proceeds = shares * price;
-
-        if (pos.shares > 0) return false;
-
         // Margin requirement: 50% cash collateral
         const reqMargin = proceeds * 0.5;
         if (this.cash < reqMargin) return false;
 
-        this.cash += proceeds;
+        this.cash -= reqMargin;
+        pos.lockedMargin += reqMargin;
         const absShares = Math.abs(pos.shares);
         const newShares = absShares + shares;
         pos.avgPrice = ((absShares * pos.avgPrice) + proceeds) / newShares;
@@ -439,6 +467,7 @@ class MarketEngine {
         const timeStr = new Date().toTimeString().split(' ')[0];
         this.trades.unshift(new TradeLog(timeStr, ticker, "SHORT", shares, price));
         if (this.trades.length > 100) this.trades.pop();
+        stock.addTradeMarker("SHORT", shares, price, timeStr);
         return true;
     }
 
@@ -451,18 +480,36 @@ class MarketEngine {
         const price = stock.price;
         const absShares = Math.abs(pos.shares);
         const sharesToCover = Math.min(shares, absShares);
-        const cost = sharesToCover * price;
         const pnl = (pos.avgPrice - price) * sharesToCover;
 
-        this.cash -= cost;
+        const marginFrac = sharesToCover / absShares;
+        const marginRelease = pos.lockedMargin * marginFrac;
+        pos.lockedMargin = Math.max(0, pos.lockedMargin - marginRelease);
+
+        this.cash += marginRelease + pnl;
         this.realizedPnL += pnl;
         pos.shares += sharesToCover;
-        if (pos.shares === 0) pos.avgPrice = 0.0;
+        if (pos.shares === 0) {
+            pos.avgPrice = 0.0;
+            pos.lockedMargin = 0.0;
+        }
 
         const timeStr = new Date().toTimeString().split(' ')[0];
         this.trades.unshift(new TradeLog(timeStr, ticker, "COVER", sharesToCover, price, pnl));
         if (this.trades.length > 100) this.trades.pop();
+        stock.addTradeMarker("COVER", sharesToCover, price, timeStr);
         return true;
+    }
+
+    reversePosition(ticker) {
+        const pos = this.positions[ticker];
+        if (!pos || pos.shares === 0) return false;
+        const shs = Math.abs(pos.shares);
+        if (pos.shares > 0) {
+            return this.short(ticker, 2 * shs);
+        } else {
+            return this.buy(ticker, 2 * shs);
+        }
     }
 
     closePosition(ticker) {
@@ -489,6 +536,7 @@ class MarketEngine {
             st.price = st.initialPrice;
             st.drift = 0.0;
             st.volatility = st.baseVolatility;
+            st.tradeMarkers = [];
             st.candles = [];
             st._seedHistory(50);
         }

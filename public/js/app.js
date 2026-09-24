@@ -254,10 +254,20 @@ class TradingApp {
         document.getElementById("btn-sell").addEventListener("click", () => this._executeOrder("SELL"));
         document.getElementById("btn-short").addEventListener("click", () => this._executeOrder("SHORT"));
         document.getElementById("btn-cover").addEventListener("click", () => this._executeOrder("COVER"));
+        const btnRev = document.getElementById("btn-reverse");
+        if (btnRev) btnRev.addEventListener("click", () => this._executeOrder("REVERSE"));
         document.getElementById("btn-flatten").addEventListener("click", () => {
-            this.engine.closePosition(this.activeTicker);
-            this.sfx.playSell();
-            this._updateAllUi();
+            const pos = this.engine.positions[this.activeTicker];
+            if (pos && pos.shares !== 0) {
+                const oldRealized = this.engine.realizedPnL;
+                const shares = Math.abs(pos.shares);
+                const act = pos.shares > 0 ? "SELL" : "COVER";
+                this.engine.closePosition(this.activeTicker);
+                this.sfx.playSell();
+                const diff = this.engine.realizedPnL - oldRealized;
+                this.chart.showTradeNotification(act, shares, this.engine.stocks[this.activeTicker].price, this.activeTicker, diff);
+                this._updateAllUi();
+            }
         });
 
         // Bottom tab navigation
@@ -280,11 +290,20 @@ class TradingApp {
             else if (key === "S") this._executeOrder("SELL");
             else if (key === "H") this._executeOrder("SHORT");
             else if (key === "C") this._executeOrder("COVER");
+            else if (key === "R") this._executeOrder("REVERSE");
             else if (key === " ") {
                 e.preventDefault();
-                this.engine.closePosition(this.activeTicker);
-                this.sfx.playSell();
-                this._updateAllUi();
+                const pos = this.engine.positions[this.activeTicker];
+                if (pos && pos.shares !== 0) {
+                    const oldRealized = this.engine.realizedPnL;
+                    const shares = Math.abs(pos.shares);
+                    const act = pos.shares > 0 ? "SELL" : "COVER";
+                    this.engine.closePosition(this.activeTicker);
+                    this.sfx.playSell();
+                    const diff = this.engine.realizedPnL - oldRealized;
+                    this.chart.showTradeNotification(act, shares, this.engine.stocks[this.activeTicker].price, this.activeTicker, diff);
+                    this._updateAllUi();
+                }
             } else if (key === "1") this._setPresetQty(10);
             else if (key === "2") this._setPresetQty(50);
             else if (key === "3") this._setPresetQty(100);
@@ -388,24 +407,51 @@ class TradingApp {
         this.elActiveSector.textContent = st.sector;
 
         this.chart.setData(st);
+        this.chart.setPosition(this.engine.positions[ticker] || null);
         this._updateDeskEstimate();
         this._updateDeskPosition();
     }
 
     _executeOrder(action) {
         let ok = false;
+        const curPrice = this.engine.stocks[this.activeTicker].price;
+        const oldRealized = this.engine.realizedPnL;
+
         if (action === "BUY") {
             ok = this.engine.buy(this.activeTicker, this.selectedQty);
-            if (ok) this.sfx.playBuy();
+            if (ok) {
+                this.sfx.playBuy();
+                this.chart.showTradeNotification("BUY", this.selectedQty, curPrice, this.activeTicker);
+            }
         } else if (action === "SELL") {
             ok = this.engine.sell(this.activeTicker, this.selectedQty);
-            if (ok) this.sfx.playSell();
+            if (ok) {
+                this.sfx.playSell();
+                const diff = this.engine.realizedPnL - oldRealized;
+                this.chart.showTradeNotification("SELL", this.selectedQty, curPrice, this.activeTicker, diff);
+            }
         } else if (action === "SHORT") {
             ok = this.engine.short(this.activeTicker, this.selectedQty);
-            if (ok) this.sfx.playSell();
+            if (ok) {
+                this.sfx.playSell();
+                this.chart.showTradeNotification("SHORT", this.selectedQty, curPrice, this.activeTicker);
+            }
         } else if (action === "COVER") {
             ok = this.engine.cover(this.activeTicker, this.selectedQty);
-            if (ok) this.sfx.playBuy();
+            if (ok) {
+                this.sfx.playBuy();
+                const diff = this.engine.realizedPnL - oldRealized;
+                this.chart.showTradeNotification("COVER", this.selectedQty, curPrice, this.activeTicker, diff);
+            }
+        } else if (action === "REVERSE") {
+            const pos = this.engine.positions[this.activeTicker];
+            const revShares = pos ? Math.abs(pos.shares) : 0;
+            ok = this.engine.reversePosition(this.activeTicker);
+            if (ok) {
+                this.sfx.playWin();
+                const diff = this.engine.realizedPnL - oldRealized;
+                this.chart.showTradeNotification("REVERSE", revShares, curPrice, this.activeTicker, diff);
+            }
         }
 
         if (ok) {
@@ -434,6 +480,7 @@ class TradingApp {
         const activeStock = this.engine.stocks[this.activeTicker];
         if (activeStock) {
             this.chart.setData(activeStock);
+            this.chart.setPosition(this.engine.positions[this.activeTicker] || null);
 
             const chgSign = activeStock.change >= 0 ? "+" : "";
             const chgClass = activeStock.change >= 0 ? "up" : "down";
@@ -703,10 +750,23 @@ class TradingApp {
         }
     }
 
-    _finishMatch() {
+    async _finishMatch() {
         if (this.syncMetricsInterval) clearInterval(this.syncMetricsInterval);
         const myEq = this.engine.totalEquity;
-        const oppEq = this.matchData && this.matchData.opponent ? this.matchData.opponent.equity : 25000.0;
+        let oppEq = 25000.0;
+        try {
+            const latestOpp = await this.fb.getLatestOpponentMetrics();
+            if (latestOpp && latestOpp.equity !== undefined) {
+                if (this.matchData) this.matchData.opponent = latestOpp;
+                oppEq = latestOpp.equity;
+            } else if (this.matchData && this.matchData.opponent) {
+                oppEq = this.matchData.opponent.equity || 25000.0;
+            }
+        } catch (e) {
+            if (this.matchData && this.matchData.opponent) {
+                oppEq = this.matchData.opponent.equity || 25000.0;
+            }
+        }
 
         let title = "MATCH COMPLETE: TIED!";
         if (myEq > oppEq) {

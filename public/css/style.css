@@ -27,6 +27,52 @@
     --font-mono: 'Consolas', 'Courier New', monospace;
 }
 
+body.theme-cyberpunk {
+    --bg-dark: #090514;
+    --bg-panel: #110b24;
+    --bg-chart: #0d071c;
+    --border-color: #2b1845;
+    --border-light: #482173;
+    --accent-blue: #c026d3;
+    --accent-hover: #d946ef;
+    --green: #00f0ff;
+    --green-bg: rgba(0, 240, 255, 0.15);
+    --green-hover: #33f3ff;
+    --red: #ff007f;
+    --red-bg: rgba(255, 0, 127, 0.15);
+    --red-hover: #ff3399;
+    --gold: #ff00ea;
+    --gold-bg: rgba(255, 0, 234, 0.15);
+}
+
+body.theme-gold-vip {
+    --bg-dark: #0d0c07;
+    --bg-panel: #18150c;
+    --bg-chart: #131109;
+    --border-color: #3b3216;
+    --border-light: #594c22;
+    --accent-blue: #ffd700;
+    --accent-hover: #ffe44d;
+    --gold: #ffd700;
+    --gold-bg: rgba(255, 215, 0, 0.18);
+    --text-white: #fffdf5;
+}
+
+.whale-badge {
+    background: linear-gradient(135deg, #0284c7, #0369a1);
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 4px;
+    margin-left: 6px;
+    letter-spacing: 0.5px;
+    box-shadow: 0 0 8px rgba(2, 132, 199, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    display: inline-block;
+    vertical-align: middle;
+}
+
 * {
     box-sizing: border-box;
     margin: 0;
@@ -929,12 +975,17 @@ table.data-table tr:hover td {
     background: var(--accent-hover);
 }
 
+#modal-shop {
+    z-index: 200;
+}
+
 .shop-modal-card {
     max-width: 800px;
     width: 90vw;
     max-height: 86vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 .shop-header {
     display: flex;

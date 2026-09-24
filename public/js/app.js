@@ -54,10 +54,15 @@ class SoundFx {
         } catch (e) {}
     }
 
-    playWin() {
+    playWin(equippedSfx = "default") {
         try {
             this._init();
             if (!this.ctx) return;
+            if (equippedSfx === "sfx_airhorn") {
+                this.playAirhorn();
+                this._playChaChing();
+                return;
+            }
             const notes = [523.25, 659.25, 783.99, 1046.50]; // C, E, G, C
             notes.forEach((freq, i) => {
                 const now = this.ctx.currentTime + (i * 0.12);
@@ -74,6 +79,55 @@ class SoundFx {
             });
         } catch (e) {}
     }
+
+    playAirhorn() {
+        try {
+            this._init();
+            if (!this.ctx) return;
+            const now = this.ctx.currentTime;
+            const bursts = [
+                { t: 0.00, d: 0.10 },
+                { t: 0.13, d: 0.10 },
+                { t: 0.26, d: 0.10 },
+                { t: 0.39, d: 0.40 }
+            ];
+            bursts.forEach(b => {
+                const startT = now + b.t;
+                [698.46, 704.0].forEach(f => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = "sawtooth";
+                    osc.frequency.setValueAtTime(f, startT);
+                    osc.frequency.exponentialRampToValueAtTime(f * 0.96, startT + b.d);
+                    gain.gain.setValueAtTime(0.18, startT);
+                    gain.gain.exponentialRampToValueAtTime(0.001, startT + b.d);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(startT);
+                    osc.stop(startT + b.d + 0.02);
+                });
+            });
+        } catch (e) {}
+    }
+
+    _playChaChing() {
+        try {
+            this._init();
+            if (!this.ctx) return;
+            const now = this.ctx.currentTime + 0.85;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(1318.51, now); // E6
+            osc.frequency.setValueAtTime(2093.00, now + 0.08); // C7
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.36);
+        } catch (e) {}
+    }
 }
 
 // --- Shop Catalog Specification ---
@@ -84,7 +138,7 @@ const SHOP_ITEMS = [
         category: "animation",
         price: 0,
         icon: "💸",
-        description: "High-roller cash storm! 100-dollar bills and shimmering gold glitter shower down."
+        description: "High-roller cash storm! 100-dollar bills and shimmering gold glitter shower down across your terminal."
     },
     {
         id: "rocket_moon",
@@ -119,6 +173,14 @@ const SHOP_ITEMS = [
         description: "The ultimate Wall Street flex. Giant mechanical golden bull charges across screen with laser eyes & bullion explosions!"
     },
     {
+        id: "theme_default",
+        name: "Classic Obsidian Dark Theme",
+        category: "theme",
+        price: 0,
+        icon: "🌑",
+        description: "The sleek, battle-tested standard dark terminal styling."
+    },
+    {
         id: "theme_cyberpunk",
         name: "Cyberpunk Neon Theme",
         category: "theme",
@@ -135,12 +197,28 @@ const SHOP_ITEMS = [
         description: "Ultra-prestige obsidian and metallic gold luxury border accents."
     },
     {
+        id: "sfx_standard",
+        name: "Standard Electronic Chimes",
+        category: "sfx",
+        price: 0,
+        icon: "🔔",
+        description: "Clean harmonic victory chimes for order fills and round victories."
+    },
+    {
         id: "sfx_airhorn",
         name: "DJ Airhorn & Cha-Ching!",
         category: "sfx",
         price: 15000,
         icon: "📢",
         description: "Stadium DJ victory airhorns and cash register cha-ching audio euphoria."
+    },
+    {
+        id: "title_trader",
+        name: "Title: 'Trader'",
+        category: "title",
+        price: 0,
+        icon: "📈",
+        description: "Standard trader badge displayed on your terminal and in duels."
     },
     {
         id: "title_whale",
@@ -155,6 +233,7 @@ const SHOP_ITEMS = [
 // --- App State & Controller ---
 class TradingApp {
     constructor() {
+        window.app = this;
         this.sfx = new SoundFx();
         this.fb = new FirebaseMatchmaker();
 
@@ -166,7 +245,7 @@ class TradingApp {
         this.searchQuery = "";
         this.activeShopCat = "all";
 
-        // Load saved profile (balance, inventory, equipped animations)
+        // Load saved profile (balance, inventory, equipped animations, themes, sfx, titles)
         this.profile = this._loadProfile();
 
         // Match state
@@ -184,6 +263,8 @@ class TradingApp {
         this._bindDom();
         this._initChart();
         this._bindEvents();
+        this._applyTheme();
+        this._updateTitleBadge();
         this._renderScanner();
         this._selectTicker("NVXP");
         this._updateVaultDisplay();
@@ -196,24 +277,35 @@ class TradingApp {
     }
 
     _loadProfile() {
+        const defaults = {
+            menu_balance: 0.0,
+            total_profit_banked: 0.0,
+            inventory: ["money_rain", "theme_default", "sfx_standard", "title_trader"],
+            equipped_animation: "money_rain",
+            equipped_theme: "theme_default",
+            equipped_sfx: "sfx_standard",
+            equipped_title: "title_trader",
+            duels_won: 0
+        };
         try {
             const raw = localStorage.getItem("daytradesim_profile");
             if (raw) {
                 const p = JSON.parse(raw);
-                if (!p.inventory) p.inventory = ["money_rain"];
-                if (!p.inventory.includes("money_rain")) p.inventory.push("money_rain");
-                if (!p.equipped_animation) p.equipped_animation = "money_rain";
+                if (!Array.isArray(p.inventory)) p.inventory = [...defaults.inventory];
+                defaults.inventory.forEach(defId => {
+                    if (!p.inventory.includes(defId)) p.inventory.push(defId);
+                });
+                p.menu_balance = typeof p.menu_balance === "number" ? p.menu_balance : 0.0;
+                p.total_profit_banked = typeof p.total_profit_banked === "number" ? p.total_profit_banked : 0.0;
+                p.equipped_animation = p.equipped_animation || "money_rain";
+                p.equipped_theme = p.equipped_theme || "theme_default";
+                p.equipped_sfx = p.equipped_sfx || "sfx_standard";
+                p.equipped_title = p.equipped_title || "title_trader";
+                p.duels_won = typeof p.duels_won === "number" ? p.duels_won : 0;
                 return p;
             }
         } catch (e) {}
-        return {
-            menu_balance: 0.0,
-            total_profit_banked: 0.0,
-            inventory: ["money_rain"],
-            equipped_animation: "money_rain",
-            equipped_theme: "default",
-            duels_won: 0
-        };
+        return defaults;
     }
 
     _saveProfile() {
@@ -476,7 +568,21 @@ class TradingApp {
             else if (key === "3") this._setPresetQty(100);
             else if (key === "4") this._setPresetQty(500);
             else if (key === "5") this._setPresetQty("MAX");
+            else if (key === "ESCAPE") {
+                if (window.winAnimations && window.winAnimations.active) {
+                    window.winAnimations.stop();
+                } else if (this.elModalShop && this.elModalShop.style.display !== "none") {
+                    this.hideShopModal();
+                }
+            }
         });
+
+        // Click outside shop modal card to close
+        if (this.elModalShop) {
+            this.elModalShop.addEventListener("click", (e) => {
+                if (e.target === this.elModalShop) this.hideShopModal();
+            });
+        }
 
         // Battle HUD Actions
         document.getElementById("btn-next-opp").addEventListener("click", () => this._handleNextOpponent());
@@ -814,6 +920,8 @@ class TradingApp {
 
     // --- Mode Management ---
     showModeModal() {
+        this._updateVaultDisplay();
+        this._updateTitleBadge();
         this.elModalMode.style.display = "flex";
     }
 
@@ -957,7 +1065,7 @@ class TradingApp {
             title = "🏆 VICTORY! YOU CRUSHED YOUR OPPONENT!";
             this.profile.duels_won = (this.profile.duels_won || 0) + 1;
             this._saveProfile();
-            this.sfx.playWin();
+            this.sfx.playWin(this.profile.equipped_sfx);
             if (window.winAnimations) {
                 window.winAnimations.play(this.profile.equipped_animation, "🏆 1v1 DUEL VICTORY! 🏆");
             }
@@ -1033,10 +1141,65 @@ class TradingApp {
             if (window.winAnimations) {
                 window.winAnimations.play(this.profile.equipped_animation);
             }
-            this.sfx.playWin();
+            this.sfx.playWin(this.profile.equipped_sfx);
             this._updateAllUi();
             alert(`🎉 Profit locked in!\n\n+$${profit.toFixed(2)} transferred to your Menu Vault.\nTotal Saved Menu Balance: $${newBal.toFixed(2)}\n\nRound complete! Returning to main menu.`);
             this._handleReturnToMenu();
+        }
+    }
+
+    // --- Custom Theme & Title Management ---
+    _applyTheme() {
+        document.body.classList.remove("theme-cyberpunk", "theme-gold-vip");
+        if (this.profile.equipped_theme === "theme_cyberpunk") {
+            document.body.classList.add("theme-cyberpunk");
+        } else if (this.profile.equipped_theme === "theme_gold_vip") {
+            document.body.classList.add("theme-gold-vip");
+        }
+
+        if (this.chart) {
+            if (this.profile.equipped_theme === "theme_cyberpunk") {
+                this.chart.colors.up = "#00f0ff";
+                this.chart.colors.upWick = "#00f0ff";
+                this.chart.colors.down = "#ff007f";
+                this.chart.colors.downWick = "#ff007f";
+                this.chart.colors.priceLine = "#d946ef";
+            } else if (this.profile.equipped_theme === "theme_gold_vip") {
+                this.chart.colors.up = "#ffd700";
+                this.chart.colors.upWick = "#ffd700";
+                this.chart.colors.down = "#e53935";
+                this.chart.colors.downWick = "#e53935";
+                this.chart.colors.priceLine = "#ffd700";
+            } else {
+                this.chart.colors.up = "#089981";
+                this.chart.colors.upWick = "#089981";
+                this.chart.colors.down = "#f23645";
+                this.chart.colors.downWick = "#f23645";
+                this.chart.colors.priceLine = "#2962ff";
+            }
+            this.chart.render();
+        }
+    }
+
+    _updateTitleBadge() {
+        const isWhale = this.profile.equipped_title === "title_whale";
+        let brandBadge = document.getElementById("hdr-whale-badge");
+        if (isWhale) {
+            if (!brandBadge) {
+                brandBadge = document.createElement("span");
+                brandBadge.id = "hdr-whale-badge";
+                brandBadge.className = "whale-badge";
+                brandBadge.textContent = "🐋 WHALE";
+                const brand = document.querySelector("#top-header .brand");
+                if (brand) brand.appendChild(brandBadge);
+            }
+        } else if (brandBadge) {
+            brandBadge.remove();
+        }
+
+        if (this.elHudMyName) {
+            const titlePrefix = isWhale ? "🐋 [WHALE] " : "";
+            this.elHudMyName.textContent = `YOU (${titlePrefix}${this.nickname})`;
         }
     }
 
@@ -1065,7 +1228,9 @@ class TradingApp {
             const owned = this.profile.inventory.includes(item.id);
             const isEquipped = (
                 (item.category === "animation" && this.profile.equipped_animation === item.id) ||
-                (item.category === "theme" && this.profile.equipped_theme === item.id)
+                (item.category === "theme" && this.profile.equipped_theme === item.id) ||
+                (item.category === "sfx" && this.profile.equipped_sfx === item.id) ||
+                (item.category === "title" && this.profile.equipped_title === item.id)
             );
             const priceStr = item.price === 0 ? "FREE" : `$${item.price.toLocaleString()}`;
             const canAfford = this.profile.menu_balance >= item.price;
@@ -1075,20 +1240,25 @@ class TradingApp {
                 if (isEquipped) {
                     actionHtml = `<span class="shop-badge-equipped">⭐ EQUIPPED</span>`;
                 } else {
-                    actionHtml = `<button class="btn-shop-equip" onclick="app._handleShopEquip('${item.id}')">Equip</button>`;
+                    actionHtml = `<button class="btn-shop-equip" onclick="window.app._handleShopEquip('${item.id}')">Equip</button>`;
                 }
             } else {
                 if (canAfford) {
-                    actionHtml = `<button class="btn-shop-buy" onclick="app._handleShopBuy('${item.id}')">Unlock ${priceStr}</button>`;
+                    actionHtml = `<button class="btn-shop-buy" onclick="window.app._handleShopBuy('${item.id}')">Unlock ${priceStr}</button>`;
                 } else {
-                    const needed = (item.price - this.profile.menu_balance).toFixed(0);
-                    actionHtml = `<button class="shop-btn-locked" disabled>${priceStr} (Need +$${needed})</button>`;
+                    const needed = Math.ceil(item.price - this.profile.menu_balance);
+                    actionHtml = `<button class="shop-btn-locked" disabled>${priceStr} (Need +$${needed.toLocaleString()})</button>`;
                 }
             }
 
-            const previewBtn = item.category === "animation"
-                ? `<button class="btn-shop-preview" onclick="app._previewAnimation('${item.id}')">🎬 Preview</button>`
-                : "";
+            let previewBtn = "";
+            if (item.category === "animation") {
+                previewBtn = `<button class="btn-shop-preview" onclick="window.app._previewAnimation('${item.id}')">🎬 Preview</button>`;
+            } else if (item.category === "sfx") {
+                previewBtn = `<button class="btn-shop-preview" onclick="window.app._previewSfx('${item.id}')">🔊 Preview Audio</button>`;
+            } else if (item.category === "theme") {
+                previewBtn = `<button class="btn-shop-preview" onclick="window.app._previewTheme('${item.id}')">👁️ Preview Theme</button>`;
+            }
 
             html += `
                 <div class="shop-item-card">
@@ -1123,10 +1293,17 @@ class TradingApp {
             this.profile.equipped_animation = itemId;
         } else if (item.category === "theme") {
             this.profile.equipped_theme = itemId;
+            this._applyTheme();
+        } else if (item.category === "sfx") {
+            this.profile.equipped_sfx = itemId;
+        } else if (item.category === "title") {
+            this.profile.equipped_title = itemId;
+            this._updateTitleBadge();
         }
         this._saveProfile();
         this._updateVaultDisplay();
         this._renderShopItems();
+        this.sfx.playBuy();
         alert(`🎉 Unlocked ${item.name}!\nIt has been automatically equipped.`);
     }
 
@@ -1138,6 +1315,13 @@ class TradingApp {
             this.profile.equipped_animation = itemId;
         } else if (item.category === "theme") {
             this.profile.equipped_theme = itemId;
+            this._applyTheme();
+        } else if (item.category === "sfx") {
+            this.profile.equipped_sfx = itemId;
+            this._previewSfx(itemId);
+        } else if (item.category === "title") {
+            this.profile.equipped_title = itemId;
+            this._updateTitleBadge();
         }
         this._saveProfile();
         this._renderShopItems();
@@ -1148,10 +1332,32 @@ class TradingApp {
             window.winAnimations.play(animationId);
         }
     }
+
+    _previewSfx(sfxId) {
+        if (sfxId === "sfx_airhorn") {
+            this.sfx.playAirhorn();
+            this.sfx._playChaChing();
+        } else {
+            this.sfx.playWin("default");
+        }
+    }
+
+    _previewTheme(themeId) {
+        document.body.classList.remove("theme-cyberpunk", "theme-gold-vip");
+        if (themeId === "theme_cyberpunk") {
+            document.body.classList.add("theme-cyberpunk");
+        } else if (themeId === "theme_gold_vip") {
+            document.body.classList.add("theme-gold-vip");
+        }
+        setTimeout(() => {
+            this._applyTheme();
+        }, 2800);
+    }
 }
 
 // Global initialization
 let app = null;
 window.addEventListener("DOMContentLoaded", () => {
     app = new TradingApp();
+    window.app = app;
 });

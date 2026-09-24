@@ -433,6 +433,8 @@ class FirebaseMatchmaker {
                 status: oppData.status || "playing"
             };
         }
+        return null;
+    }
 
     async getLatestOpponentMetrics() {
         if (this.opponentBot) {

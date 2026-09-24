@@ -11,6 +11,9 @@ from ui.trading_panel import TradingPanel
 from ui.news_feed import NewsFeedPanel
 from ui.trade_log_panel import TradeLogPanel
 from ui.battle_panel import BattleHUD, MatchEndDialog
+from profile_manager import get_profile
+from ui.shop_dialog import ShopDialog
+from ui.win_animations import play_win_animation
 
 class DayTradeSimApp(tk.Tk):
     """
@@ -39,6 +42,8 @@ class DayTradeSimApp(tk.Tk):
         self.battle_hud: Optional[BattleHUD] = None
         self._is_syncing_metrics = False
         self._match_dialog_open = False
+        self.profile = get_profile()
+        self.btn_bank_profit: Optional[tk.Button] = None
 
         seed = self.match_data.get("seed") if self.mode == "online" else None
         opp_name = self.match_data.get("opponent", {}).get("name", "Opponent") if self.mode == "online" else ""
@@ -141,6 +146,21 @@ class DayTradeSimApp(tk.Tk):
                 pady=4
             ).pack(side=tk.LEFT, padx=4)
 
+            btn_online_shop = tk.Button(
+                ctrl_f,
+                text="🛒 Shop",
+                font=("Segoe UI", 8, "bold"),
+                bg="#1e222d",
+                fg="#ffd700",
+                activebackground="#2a2e39",
+                activeforeground="#ffffff",
+                relief=tk.FLAT,
+                padx=8, pady=3,
+                cursor="hand2",
+                command=self._open_shop
+            )
+            btn_online_shop.pack(side=tk.LEFT, padx=4)
+
             btn_leave = tk.Button(
                 ctrl_f,
                 text="🚪 Exit Duel",
@@ -197,6 +217,23 @@ class DayTradeSimApp(tk.Tk):
             )
             self.btn_pause.pack(side=tk.LEFT, padx=(10, 4))
 
+            # Bank Profit to Menu Button
+            self.btn_bank_profit = tk.Button(
+                ctrl_f,
+                text="💰 Bank Profit",
+                font=("Segoe UI", 8, "bold"),
+                bg="#1e222d",
+                fg="#50535e",
+                activebackground="#00e676",
+                activeforeground="#000000",
+                relief=tk.FLAT,
+                padx=8, pady=2,
+                cursor="hand2",
+                state=tk.DISABLED,
+                command=self._handle_bank_profit
+            )
+            self.btn_bank_profit.pack(side=tk.LEFT, padx=2)
+
             # Reset Game Button
             btn_reset = tk.Button(
                 ctrl_f,
@@ -213,6 +250,22 @@ class DayTradeSimApp(tk.Tk):
             )
             btn_reset.pack(side=tk.LEFT, padx=2)
 
+            # Trader Shop Button
+            btn_shop = tk.Button(
+                ctrl_f,
+                text="🛒 Shop",
+                font=("Segoe UI", 8, "bold"),
+                bg="#1e222d",
+                fg="#ffd700",
+                activebackground="#2a2e39",
+                activeforeground="#ffffff",
+                relief=tk.FLAT,
+                padx=8, pady=2,
+                cursor="hand2",
+                command=self._open_shop
+            )
+            btn_shop.pack(side=tk.LEFT, padx=2)
+
             # Return to Menu Button
             btn_menu = tk.Button(
                 ctrl_f,
@@ -228,6 +281,7 @@ class DayTradeSimApp(tk.Tk):
                 command=self._handle_return_to_menu
             )
             btn_menu.pack(side=tk.LEFT, padx=(6, 2))
+
 
 
     def _build_battle_hud(self):
@@ -445,6 +499,48 @@ class DayTradeSimApp(tk.Tk):
             fg=c_tot
         )
 
+        # Update Bank Profit Button if equity is above starting $25,000
+        if hasattr(self, "btn_bank_profit") and self.btn_bank_profit:
+            profit_above_25k = max(0.0, eq - 25000.0)
+            if profit_above_25k > 0:
+                self.btn_bank_profit.config(
+                    text=f"💰 Bank +${profit_above_25k:,.2f}",
+                    state=tk.NORMAL,
+                    bg="#00c853",
+                    fg="#ffffff"
+                )
+            else:
+                self.btn_bank_profit.config(
+                    text="💰 Bank Profit",
+                    state=tk.DISABLED,
+                    bg="#1e222d",
+                    fg="#50535e"
+                )
+
+    def _open_shop(self):
+        ShopDialog(self)
+
+    def _handle_bank_profit(self):
+        profit = self.engine.bank_profit()
+        if profit > 0:
+            new_bal = self.profile.bank_profit(profit)
+            play_win_animation(self)
+            self.watchlist.update_prices()
+            pos = self.engine.positions.get(self.active_ticker)
+            self.chart.set_position(pos)
+            self.chart.draw()
+            self.trading_panel.update_display()
+            self.trade_log_panel.refresh_trades(self.engine.trades)
+            self._update_header_metrics()
+            messagebox.showinfo(
+                "💰 Profit Banked to Menu!",
+                f"🎉 Profit locked in!\n\n"
+                f"+${profit:,.2f} has been transferred to your Menu Vault.\n"
+                f"Total Saved Menu Balance: ${new_bal:,.2f}\n\n"
+                f"Round complete! Returning to main menu."
+            )
+            self._handle_return_to_menu()
+
     def _simulation_loop(self):
         """Heartbeat simulation step with throttled scanner rendering and online synchronization."""
         try:
@@ -486,6 +582,18 @@ class DayTradeSimApp(tk.Tk):
                         self.fb_manager.opponent_bot.tick()
                         opp_eq = self.fb_manager.opponent_bot.equity
                         self.battle_hud.opp_equity = opp_eq
+
+                    my_eq = self.engine.total_equity
+                    diff = my_eq - opp_eq
+                    if diff > 0.0:
+                        self.profile.duels_won += 1
+                        self.profile.save()
+                        play_win_animation(self)
+
+                    # Auto-bank profit above 25000
+                    if my_eq > 25000.0:
+                        profit = my_eq - 25000.0
+                        self.profile.bank_profit(profit)
 
                     MatchEndDialog(
                         self,
@@ -641,6 +749,10 @@ class DayTradeSimApp(tk.Tk):
 
     def _handle_return_to_menu(self):
         """Cleans up active timers/processes and returns to the mode selection menu."""
+        if hasattr(self, "engine") and self.engine.total_equity > 25000.0:
+            profit = self.engine.bank_profit()
+            if profit > 0:
+                self.profile.bank_profit(profit)
         if self._loop_job:
             try:
                 self.after_cancel(self._loop_job)
@@ -657,6 +769,9 @@ class DayTradeSimApp(tk.Tk):
             self.on_return_to_menu()
 
     def _handle_leave_battle(self):
+        if hasattr(self, "engine") and self.engine.total_equity > 25000.0:
+            profit = self.engine.total_equity - 25000.0
+            self.profile.bank_profit(profit)
         self._handle_return_to_menu()
 
     def destroy(self):

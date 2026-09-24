@@ -333,6 +333,18 @@ class MatchEndDialog(tk.Toplevel):
         opp_pnl_str = f"{'+' if opp_equity >= 25000 else ''}${opp_equity - 25000:,.2f}"
         make_row(card, "NET PROFIT", my_pnl_str, opp_pnl_str)
 
+        if my_equity > 25000.0:
+            profit_banked = my_equity - 25000.0
+            vault_pill = tk.Frame(self, bg="#1a2e22", bd=1, relief=tk.SOLID, padx=12, pady=4)
+            vault_pill.pack(pady=(6, 0))
+            tk.Label(
+                vault_pill,
+                text=f"💰 +${profit_banked:,.2f} Banked to Menu Vault!",
+                font=("Segoe UI", 9, "bold"),
+                fg="#00e676",
+                bg="#1a2e22"
+            ).pack()
+
         # Buttons
         btn_f = tk.Frame(self, bg="#0e1117")
         btn_f.pack(pady=25)

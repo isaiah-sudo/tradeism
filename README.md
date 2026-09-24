@@ -2,18 +2,19 @@
 
 <div align="center">
 
-[![Download Windows Installer](https://img.shields.io/badge/Installer-DayTradeSim--Setup--v1.3.0.exe-00E676?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim-Setup-v1.3.0.exe)
+[![Download Windows Installer](https://img.shields.io/badge/Installer-DayTradeSim--Setup--v1.4.0.exe-00E676?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim-Setup-v1.4.0.exe)
 [![Download Portable EXE](https://img.shields.io/badge/Portable-DayTradeSim.exe-00B0FF?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim.exe)
 [![GitHub Release](https://img.shields.io/github/v/release/isaiah-sudo/daytradesim?style=for-the-badge&color=2962FF)](https://github.com/isaiah-sudo/daytradesim/releases/latest)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero%20External-FF9800?style=for-the-badge)](requirements.txt)
 [![Stocks](https://img.shields.io/badge/Universe-100%20Volatile%20Stocks-purple?style=for-the-badge)](#-100-volatile-stocks-across-10-sectors)
 [![Multiplayer](https://img.shields.io/badge/Multiplayer-1v1%20Online%20Duel-ff007f?style=for-the-badge)](#-game-modes)
+[![Shop & Perks](https://img.shields.io/badge/Shop-Win%20Animations%20%26%20Perks-ffd700?style=for-the-badge)](#-trader-shop--customizations)
 [![License](https://img.shields.io/badge/License-MIT-gray?style=for-the-badge)](LICENSE)
 
 **An adrenaline-fueled, hyper-realistic intraday stock trading simulator.**  
-Experience the chaos of Wall Street with **100 ultra-volatile stocks**, breaking news catalysts, high-performance candlestick charts, smart execution hotkeys, 4 difficulty speed modes, and **1v1 Omegle-style Online Duels**.
+Experience the chaos of Wall Street with **100 ultra-volatile stocks**, breaking news catalysts, high-performance candlestick charts, smart execution hotkeys, 4 difficulty speed modes, **1v1 Omegle-style Online Duels**, and the brand new **Persistent Menu Vault & Trader Shop**!
 
-[Download Installer](#-download--play-windows) • [Game Modes](#-game-modes) • [Features](#-key-features) • [Stock Universe](#-100-volatile-stocks-across-10-sectors) • [Hotkeys](#-universal-keyboard-hotkeys) • [Source Run](#-running-from-source)
+[Download Installer](#-download--play-windows) • [Game Modes](#-game-modes) • [Trader Shop](#-trader-shop--customizations) • [Features](#-key-features) • [Stock Universe](#-100-volatile-stocks-across-10-sectors) • [Hotkeys](#-universal-keyboard-hotkeys) • [Source Run](#-running-from-source)
 
 </div>
 
@@ -44,6 +45,21 @@ High-octane competitive head-to-head trading battles:
 - **Synchronized Match Seed**: Both traders trade against the exact same market movements, candlestick charts, and breaking news catalysts simultaneously.
 - **3-Minute High-Stakes Blitz**: Out-trade, out-scale, and out-earn your rival before the 180-second duel clock expires!
 - **⏭️ Next Opponent Instant Re-Pair**: Skip or forfeit at any time with the Next button to immediately pair with a fresh trader.
+
+---
+
+## 🛒 Trader Shop & Customizations (New in v1.4)
+
+Lock in your hard-earned trading profits and build a persistent empire:
+- **💰 Real-Time Profit Banking**: Whenever your net equity exceeds your starting $25,000 capital, the header's **💰 Bank Profit** button lights up green. One click takes your profit, saves it to your persistent **Menu Vault**, plays your win animation, and sends you back to the menu to begin a fresh round!
+- **💾 Local Machine Persistence**: All banked savings, unlocked items, and equipped cosmetic presets are persisted locally (`~/.daytradesim/user_profile.json` on Desktop, `localStorage` on Web).
+- **🎆 Crazy Win Animations**:
+  - **💸 Money Rain & Gold Confetti** (Free default)
+  - **🚀 To The Moon Rocket Blast** ($25,000)
+  - **⚡ Cyber Matrix Glitch Rain** ($75,000)
+  - **💎 Diamond Hands Supernova** ($200,000)
+  - **👑 Golden Bull Stampede** ($500,000)
+- **🎨 Custom UI Themes, SFX & Titles**: Unlock the **Cyberpunk Neon Theme** ($50,000), **Golden Bull VIP Theme** ($150,000), **DJ Airhorn SFX** ($15,000), and the prestigious **Wall Street Whale Title** ($100,000).
 
 ---
 
@@ -125,7 +141,7 @@ Hotkeys work **everywhere** — including while searching stocks or typing share
 Anyone on Windows can download and play immediately—**no Python installation or setup required!**
 
 ### Option 1: Official Windows Installer (Recommended)
-👉 [**Download DayTradeSim-Setup-v1.3.0.exe**](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim-Setup-v1.3.0.exe)
+👉 [**Download DayTradeSim-Setup-v1.4.0.exe**](https://github.com/isaiah-sudo/daytradesim/releases/latest/download/DayTradeSim-Setup-v1.4.0.exe)
 - 🚀 Official setup wizard
 - 🖥️ Creates a **Desktop shortcut** with custom trading icon
 - 📌 Adds a **Start Menu shortcut** for instant access

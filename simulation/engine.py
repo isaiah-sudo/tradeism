@@ -141,8 +141,8 @@ class MarketEngine:
         self.ticks_since_news += 1
 
         triggered_news: Optional[NewsItem] = None
-        # Guarantee minimum 10 ticks between news so it's not a complete spam
-        if self.ticks_since_news >= 15 and random.random() < diff_cfg["news_prob"]:
+        # Guarantee minimum 20 ticks between news so it does not spam or stack violent shocks
+        if self.ticks_since_news >= 20 and random.random() < diff_cfg["news_prob"]:
             triggered_news = self.news_gen.generate_random_news(list(self.stocks.values()))
             self.news_feed.insert(0, triggered_news)
             if len(self.news_feed) > 50:
@@ -153,7 +153,7 @@ class MarketEngine:
             # Apply news impact
             if triggered_news.ticker == "MARKET":
                 for st in self.stocks.values():
-                    mult = 1.0 + (triggered_news.shock_pct * random.uniform(0.6, 1.2))
+                    mult = 1.0 + (triggered_news.shock_pct * random.uniform(0.6, 1.1))
                     st.apply_shock(mult, triggered_news.momentum_drift * 0.5)
             elif triggered_news.ticker in self.stocks:
                 st = self.stocks[triggered_news.ticker]
@@ -325,6 +325,23 @@ class MarketEngine:
         else:
             return self.cover(ticker, abs(pos.shares))
 
+    def bank_profit(self) -> float:
+        """
+        Takes all net profit above initial cash ($25,000) by flattening open
+        positions and resetting trading equity back to initial cash ($25,000).
+        Returns the profit amount banked.
+        """
+        for ticker in list(self.positions.keys()):
+            pos = self.positions[ticker]
+            if pos.shares != 0:
+                self.close_position(ticker)
+
+        profit = max(0.0, self.total_equity - self.initial_cash)
+        if profit > 0:
+            self.cash = self.initial_cash
+            self.realized_pnl = 0.0
+        return profit
+
     def reset_account(self, seed: Optional[int] = None):
         """Reset game state."""
         if seed is not None:
@@ -343,4 +360,6 @@ class MarketEngine:
             st.trade_markers.clear()
             st.candles.clear()
             st._seed_history(50)
+
+
 

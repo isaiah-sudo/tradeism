@@ -7,6 +7,8 @@ from typing import Callable, Optional, Dict, Any
 from network.firebase_manager import FirebaseManager
 from version import __version__
 from network.updater import check_for_update, UpdateDialog
+from profile_manager import get_profile
+from ui.shop_dialog import ShopDialog
 
 class FirebaseConfigDialog(tk.Toplevel):
     """Dialog allowing user to view and paste Firebase API Key and Project ID."""
@@ -131,6 +133,7 @@ class ModeSelectWindow(tk.Tk):
         self.on_start_solo = on_start_solo
         self.on_start_online = on_start_online
 
+        self.profile = get_profile()
         self.fb_manager = FirebaseManager()
         self._cancel_search = threading.Event()
         self._search_thread: Optional[threading.Thread] = None
@@ -140,7 +143,16 @@ class ModeSelectWindow(tk.Tk):
         self._build_ui()
 
         # Non-intrusive background check for updates after window loads
-        self.after(1500, self._check_updates_silent)
+        self._update_job = self.after(1500, self._check_updates_silent)
+
+    def destroy(self):
+        if getattr(self, "_update_job", None):
+            try:
+                self.after_cancel(self._update_job)
+            except Exception:
+                pass
+            self._update_job = None
+        super().destroy()
 
     def _center_window(self):
         self.update_idletasks()
@@ -153,7 +165,7 @@ class ModeSelectWindow(tk.Tk):
     def _build_ui(self):
         # 1. Header Banner
         header_f = tk.Frame(self, bg=self.THEME_BG)
-        header_f.pack(fill=tk.X, pady=(25, 10))
+        header_f.pack(fill=tk.X, pady=(20, 8))
 
         tk.Label(
             header_f,
@@ -171,9 +183,60 @@ class ModeSelectWindow(tk.Tk):
             bg=self.THEME_BG
         ).pack(pady=(2, 0))
 
+        # Vault Balance & Shop Bar in Menu
+        vault_f = tk.Frame(header_f, bg=self.CARD_BG, bd=1, relief=tk.SOLID, padx=16, pady=6)
+        vault_f.pack(pady=(10, 0))
+
+        tk.Label(
+            vault_f,
+            text="💰 MENU VAULT BALANCE:",
+            font=("Segoe UI", 9, "bold"),
+            fg=self.TEXT_MUTED,
+            bg=self.CARD_BG
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        self.lbl_vault_balance = tk.Label(
+            vault_f,
+            text=f"${self.profile.menu_balance:,.2f}",
+            font=("Segoe UI", 12, "bold"),
+            fg=self.GREEN,
+            bg=self.CARD_BG
+        )
+        self.lbl_vault_balance.pack(side=tk.LEFT, padx=(0, 15))
+
+        self.btn_open_shop = tk.Button(
+            vault_f,
+            text="🛒 Trader Shop",
+            font=("Segoe UI", 9, "bold"),
+            bg="#2962ff",
+            fg="#ffffff",
+            activebackground="#3d72ff",
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            padx=10, pady=2,
+            cursor="hand2",
+            command=self._open_shop
+        )
+        self.btn_open_shop.pack(side=tk.LEFT)
+
         # Top-Right Control Bar (Check for Updates & Firebase Config)
         top_ctrls = tk.Frame(self, bg=self.THEME_BG)
         top_ctrls.place(relx=1.0, y=18, anchor="ne", x=-25)
+
+        self.btn_top_shop = tk.Button(
+            top_ctrls,
+            text="🛒 Shop",
+            font=("Segoe UI", 8, "bold"),
+            bg="#1e222d",
+            fg="#ffd700",
+            activebackground="#2a2e39",
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            padx=8, pady=3,
+            cursor="hand2",
+            command=self._open_shop
+        )
+        self.btn_top_shop.pack(side=tk.LEFT, padx=(0, 6))
 
         self.btn_update = tk.Button(
             top_ctrls,
@@ -353,6 +416,12 @@ class ModeSelectWindow(tk.Tk):
 
     def _open_config_dialog(self):
         FirebaseConfigDialog(self, self.fb_manager, on_saved=self._update_footer_status)
+
+    def _open_shop(self):
+        ShopDialog(self, on_profile_updated=self._update_vault_display)
+
+    def _update_vault_display(self):
+        self.lbl_vault_balance.config(text=f"${self.profile.menu_balance:,.2f}")
 
     def _launch_solo(self):
         self.destroy()

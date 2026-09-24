@@ -247,12 +247,17 @@ class DayTradeSimApp(tk.Tk):
             on_next_opponent=self._handle_next_opponent,
             on_leave_battle=self._handle_leave_battle
         )
-        self.battle_hud.pack(fill=tk.X, side=tk.TOP, padx=8, pady=(4, 0))
+        if hasattr(self, "main_f") and self.main_f.winfo_exists():
+            self.battle_hud.pack(fill=tk.X, side=tk.TOP, padx=8, pady=(4, 0), before=self.main_f)
+        else:
+            self.battle_hud.pack(fill=tk.X, side=tk.TOP, padx=8, pady=(4, 0))
 
     def _build_main_layout(self):
         """Center layout with Watchlist on left, Candlestick Chart in center, Trading Panel on right."""
         main_f = tk.Frame(self, bg=self.THEME_BG)
+        self.main_f = main_f
         main_f.pack(fill=tk.BOTH, expand=True, padx=8, pady=(6, 0))
+
 
         # 1. Left Watchlist
         self.watchlist = WatchlistPanel(
@@ -539,6 +544,9 @@ class DayTradeSimApp(tk.Tk):
         if self.fb_manager:
             self.fb_manager.forfeit_or_leave()
 
+        # Pause simulation while searching
+        self.engine.is_paused = True
+
         # Create quick search popup
         dialog = tk.Toplevel(self)
         dialog.title("Finding Next Opponent")
@@ -594,21 +602,37 @@ class DayTradeSimApp(tk.Tk):
         self._match_dialog_open = False
         self.match_data = new_match
         opp_name = new_match.get("opponent", {}).get("name", "Opponent")
+        my_name = getattr(self.fb_manager, "display_name", "You") or "You"
+        duration = new_match.get("duration_seconds", 180)
+
+        now = time.time()
+        start_time = new_match.get("start_time", now)
+        if (now - start_time) > 10.0 or start_time > (now + 5.0):
+            start_time = now
+            new_match["start_time"] = now
+
         self.title(f"⚡ DAY TRADE SIMULATOR • 1v1 DUEL vs {opp_name}")
 
         # Reset account with synchronized seed
         self.engine.reset_account(seed=new_match.get("seed"))
         self.engine.is_paused = False
 
-        if self.battle_hud:
-            self.battle_hud.destroy()
-        self._build_battle_hud()
+        if self.battle_hud and self.battle_hud.winfo_exists():
+            self.battle_hud.reset_round(
+                opponent_name=opp_name,
+                round_duration=duration,
+                start_time=start_time,
+                my_name=my_name
+            )
+        else:
+            self._build_battle_hud()
 
         self.watchlist.update_prices()
         self.chart.set_stock(self.engine.stocks[self.active_ticker])
         self.trading_panel.update_display()
         self.trade_log_panel.refresh_trades([])
         self._update_header_metrics()
+
 
     def _on_requeue_timeout(self, dialog):
         dialog.destroy()

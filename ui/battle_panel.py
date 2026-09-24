@@ -208,6 +208,43 @@ class BattleHUD(tk.Frame):
 
         return True
 
+    def reset_round(
+        self,
+        opponent_name: str,
+        round_duration: int = 180,
+        start_time: Optional[float] = None,
+        my_name: Optional[str] = None
+    ):
+        """Resets the HUD for a new round in-place with zero layout disruption."""
+        if my_name:
+            self.my_name = my_name
+            for child in self.winfo_children():
+                # Update player tag if needed
+                pass
+        self.opponent_name = opponent_name
+        self.round_duration = round_duration
+        self.start_time = start_time or time.time()
+
+        self.my_equity = 25000.0
+        self.my_pnl = 0.0
+        self.my_pnl_pct = 0.0
+
+        self.opp_equity = 25000.0
+        self.opp_pnl = 0.0
+        self.opp_pnl_pct = 0.0
+        self.opp_status = "Trading"
+
+        self.is_match_ended = False
+
+        self.lbl_my_score.config(text="$25,000.00 (+0.00%)", fg="#ffffff")
+        self.lbl_opp_tag.config(text=f"OPPONENT ({self.opponent_name})")
+        self.lbl_opp_score.config(text="$25,000.00 (+0.00%)", fg="#ffffff")
+        self.lbl_leader.config(text="⚔️ 1v1 MATCH STARTED • EVEN", fg=self.GOLD)
+
+        mins = self.round_duration // 60
+        secs = self.round_duration % 60
+        self.lbl_timer.config(text=f"{mins:02d}:{secs:02d}", fg="#ffffff")
+
     def _confirm_next_opponent(self):
         confirm = messagebox.askyesno(
             "Skip to Next Opponent",

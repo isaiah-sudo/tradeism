@@ -366,6 +366,9 @@ class FirebaseManager:
         now = time.time()
 
         try:
+            # Clear any stale queue entry for self first
+            self._firestore_delete(queue_path)
+
             # 1. Query existing queue
             resp = http.get(list_url, timeout=5)
             documents = resp.json().get("documents", []) if resp.status_code == 200 else []
@@ -454,14 +457,14 @@ class FirebaseManager:
                 "timestamp": now
             }, merge=False)
 
-            # Poll for match assignment or cancel (Fast pairing within 12 seconds)
+            # Poll for match assignment or cancel (Fast pairing within 6 seconds)
             poll_start = time.time()
-            while time.time() - poll_start < 12.0:
+            while time.time() - poll_start < 6.0:
                 if cancel_event.is_set():
                     self._firestore_delete(queue_path)
                     return None
 
-                time.sleep(1.0)
+                time.sleep(0.75)
                 ticket = self._firestore_get(queue_path)
                 if ticket and ticket.get("status") == "matched":
                     match_id = ticket.get("match_id")
@@ -597,16 +600,23 @@ class FirebaseManager:
 
     def forfeit_or_leave(self):
         """Called when a player clicks Omegle 'Next' or closes match."""
-        if not self.is_mock_mode and self.active_match_id and self.player_slot:
-            try:
-                self._firestore_set(f"matches/{self.active_match_id}", {
-                    self.player_slot: {
-                        "status": "forfeited"
-                    },
-                    "status": "ended"
-                }, merge=True)
-            except Exception:
-                pass
+        if not self.is_mock_mode:
+            if self.active_match_id and self.player_slot:
+                try:
+                    self._firestore_set(f"matches/{self.active_match_id}", {
+                        self.player_slot: {
+                            "status": "forfeited"
+                        },
+                        "status": "ended"
+                    }, merge=True)
+                except Exception:
+                    pass
+            if self.user_id:
+                try:
+                    self._firestore_delete(f"match_queue/{self.user_id}")
+                except Exception:
+                    pass
         self.active_match_id = None
         self.player_slot = None
         self.opponent_bot = None
+

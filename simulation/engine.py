@@ -10,6 +10,7 @@ class Position:
         self.ticker = ticker
         self.shares = 0         # Positive = Long, Negative = Short, 0 = Flat
         self.avg_price = 0.0
+        self.locked_margin = 0.0
 
     @property
     def side(self) -> str:
@@ -106,12 +107,8 @@ class MarketEngine:
 
     @property
     def total_equity(self) -> float:
-        equity = self.cash
-        for ticker, pos in self.positions.items():
-            if pos.shares != 0:
-                current_p = self.stocks[ticker].price
-                equity += pos.unrealized_pnl(current_p)
-        return equity
+        """Accurate net portfolio equity: initial cash + realized gains + open unrealized P&L."""
+        return self.initial_cash + self.realized_pnl + self.total_unrealized_pnl
 
     @property
     def total_unrealized_pnl(self) -> float:
@@ -172,18 +169,24 @@ class MarketEngine:
     # --- ORDER EXECUTION ---
 
     def buy(self, ticker: str, shares: int) -> bool:
-        """Buy shares (enter or add to Long position, or cover Short)."""
+        """Buy shares (enter or add to Long position, or cover Short with automatic flip if quantity exceeds short)."""
         if shares <= 0 or ticker not in self.stocks:
             return False
         stock = self.stocks[ticker]
         pos = self.positions[ticker]
         price = stock.price
-        cost = shares * price
 
         if pos.shares < 0:
-            # We are shorting, so buying here is covering!
-            return self.cover(ticker, shares)
+            short_shs = abs(pos.shares)
+            if shares <= short_shs:
+                return self.cover(ticker, shares)
+            else:
+                if not self.cover(ticker, short_shs):
+                    return False
+                remaining = shares - short_shs
+                return self.buy(ticker, remaining)
 
+        cost = shares * price
         if self.cash < cost:
             return False
 
@@ -196,6 +199,7 @@ class MarketEngine:
         self.trades.insert(0, TradeLog(time_str, ticker, "BUY", shares, price))
         if len(self.trades) > 100:
             self.trades.pop()
+        stock.add_trade_marker("BUY", shares, price, time_str)
         return True
 
     def sell(self, ticker: str, shares: int) -> bool:
@@ -223,28 +227,36 @@ class MarketEngine:
         self.trades.insert(0, TradeLog(time_str, ticker, "SELL", shares_to_sell, price, pnl))
         if len(self.trades) > 100:
             self.trades.pop()
+        stock.add_trade_marker("SELL", shares_to_sell, price, time_str)
         return True
 
     def short(self, ticker: str, shares: int) -> bool:
-        """Short sell shares (borrow and sell at current price)."""
+        """Short sell shares (borrow and sell, with automatic flip if currently long)."""
         if shares <= 0 or ticker not in self.stocks:
             return False
         pos = self.positions[ticker]
         stock = self.stocks[ticker]
         price = stock.price
-        proceeds = shares * price
 
-        # If already long, close long first or reject
         if pos.shares > 0:
-            return False
+            long_shs = pos.shares
+            if shares <= long_shs:
+                return self.sell(ticker, shares)
+            else:
+                if not self.sell(ticker, long_shs):
+                    return False
+                remaining = shares - long_shs
+                return self.short(ticker, remaining)
 
-        # Margin check: require at least 50% margin cash
+        proceeds = shares * price
+        # Require 50% margin cash collateral
         required_margin = proceeds * 0.5
         if self.cash < required_margin:
             return False
 
-        # When shorting, cash increases by proceeds, but equity depends on liability
-        self.cash += proceeds
+        self.cash -= required_margin
+        pos.locked_margin += required_margin
+
         abs_shares = abs(pos.shares)
         new_shares = abs_shares + shares
         pos.avg_price = ((abs_shares * pos.avg_price) + proceeds) / new_shares
@@ -254,6 +266,7 @@ class MarketEngine:
         self.trades.insert(0, TradeLog(time_str, ticker, "SHORT", shares, price))
         if len(self.trades) > 100:
             self.trades.pop()
+        stock.add_trade_marker("SHORT", shares, price, time_str)
         return True
 
     def cover(self, ticker: str, shares: int) -> bool:
@@ -268,26 +281,39 @@ class MarketEngine:
         price = stock.price
         abs_shares = abs(pos.shares)
         shares_to_cover = min(shares, abs_shares)
-        cost = shares_to_cover * price
 
-        # Short PnL = (avg_price - cover_price) * shares
+        # Short PnL = (entry_price - cover_price) * shares
         pnl = (pos.avg_price - price) * shares_to_cover
 
-        if self.cash < cost:
-            # Emergency liquidating if cash is short
-            pass
+        # Release proportional locked margin
+        margin_frac = shares_to_cover / abs_shares
+        margin_release = pos.locked_margin * margin_frac
+        pos.locked_margin = max(0.0, pos.locked_margin - margin_release)
 
-        self.cash -= cost
+        self.cash += margin_release + pnl
         self.realized_pnl += pnl
         pos.shares += shares_to_cover
         if pos.shares == 0:
             pos.avg_price = 0.0
+            pos.locked_margin = 0.0
 
         time_str = time.strftime("%H:%M:%S")
         self.trades.insert(0, TradeLog(time_str, ticker, "COVER", shares_to_cover, price, pnl))
         if len(self.trades) > 100:
             self.trades.pop()
+        stock.add_trade_marker("COVER", shares_to_cover, price, time_str)
         return True
+
+    def reverse_position(self, ticker: str) -> bool:
+        """Instantly flips position between Long and Short at current size."""
+        pos = self.positions.get(ticker)
+        if not pos or pos.shares == 0:
+            return False
+        shs = abs(pos.shares)
+        if pos.shares > 0:
+            return self.short(ticker, 2 * shs)
+        else:
+            return self.buy(ticker, 2 * shs)
 
     def close_position(self, ticker: str) -> bool:
         """Quickly flatten position in ticker."""
@@ -314,5 +340,7 @@ class MarketEngine:
             st.price = st.initial_price
             st.drift = 0.0
             st.volatility = st.base_volatility
+            st.trade_markers.clear()
             st.candles.clear()
             st._seed_history(50)
+

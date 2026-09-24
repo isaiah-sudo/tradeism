@@ -299,13 +299,17 @@ class FirebaseManager:
             print(f"[FirebaseManager] Get error on {path}: {e}")
         return None
 
-    def _firestore_set(self, path: str, data: Dict[str, Any]) -> bool:
+    def _firestore_set(self, path: str, data: Dict[str, Any], merge: bool = True) -> bool:
         headers = {}
         if self.id_token:
             headers["Authorization"] = f"Bearer {self.id_token}"
         try:
             doc_body = dict_to_firestore_doc(data)
-            resp = http.patch(self._firestore_url(path), json=doc_body, headers=headers, timeout=5)
+            url = self._firestore_url(path)
+            if merge and data:
+                mask_params = "&".join(f"updateMask.fieldPaths={k}" for k in data.keys())
+                url = f"{url}?{mask_params}"
+            resp = http.patch(url, json=doc_body, headers=headers, timeout=5)
             return resp.status_code == 200
         except Exception as e:
             print(f"[FirebaseManager] Set error on {path}: {e}")
@@ -412,7 +416,7 @@ class FirebaseManager:
                 }
 
                 # Save match room
-                self._firestore_set(f"matches/{match_id}", match_data)
+                self._firestore_set(f"matches/{match_id}", match_data, merge=False)
 
                 # Notify opponent ticket
                 self._firestore_set(f"match_queue/{opp_uid}", {
@@ -421,7 +425,7 @@ class FirebaseManager:
                     "match_id": match_id,
                     "seed": seed,
                     "timestamp": now
-                })
+                }, merge=False)
 
                 # Remove self from queue if present
                 self._firestore_delete(queue_path)
@@ -448,11 +452,11 @@ class FirebaseManager:
                 "name": self.display_name,
                 "status": "waiting",
                 "timestamp": now
-            })
+            }, merge=False)
 
-            # Poll for match assignment or cancel
+            # Poll for match assignment or cancel (Fast pairing within 12 seconds)
             poll_start = time.time()
-            while time.time() - poll_start < 45.0:
+            while time.time() - poll_start < 12.0:
                 if cancel_event.is_set():
                     self._firestore_delete(queue_path)
                     return None
@@ -483,7 +487,7 @@ class FirebaseManager:
                             }
                         }
 
-            # If no human opponent joined within 10s, deploy dynamic rival bot so player can duel immediately!
+            # If no human opponent joined within 12s, deploy dynamic rival bot so player can duel immediately!
             self._firestore_delete(queue_path)
             self.opponent_bot = SimulatedOpponentBot()
             self.active_match_id = f"rival_match_{int(time.time())}"
@@ -541,7 +545,7 @@ class FirebaseManager:
         opp_slot = "player2" if self.player_slot == "player1" else "player1"
         now = time.time()
 
-        # Update my metrics in Firestore
+        # Update my metrics in Firestore (merge=True ensures opponent's slot is preserved!)
         self._firestore_set(f"matches/{self.active_match_id}", {
             self.player_slot: {
                 "uid": self.user_id,
@@ -552,19 +556,43 @@ class FirebaseManager:
                 "status": "playing",
                 "last_update": now
             }
-        })
+        }, merge=True)
 
         # Fetch opponent's metrics
         match_doc = self._firestore_get(f"matches/{self.active_match_id}")
         if match_doc:
             opp_data = match_doc.get(opp_slot, {})
-            return {
-                "name": opp_data.get("name", "Opponent"),
-                "equity": opp_data.get("equity", 25000.0),
-                "pnl": opp_data.get("pnl", 0.0),
-                "pnl_pct": opp_data.get("pnl_pct", 0.0),
-                "status": opp_data.get("status", "playing")
-            }
+            if opp_data:
+                return {
+                    "name": opp_data.get("name", "Opponent"),
+                    "equity": opp_data.get("equity", 25000.0),
+                    "pnl": opp_data.get("pnl", 0.0),
+                    "pnl_pct": opp_data.get("pnl_pct", 0.0),
+                    "status": opp_data.get("status", "playing")
+                }
+        return None
+
+    def get_latest_opponent_metrics(self) -> Optional[Dict[str, Any]]:
+        """Synchronously returns the freshest opponent metrics right before concluding match."""
+        if self.opponent_bot:
+            return self.opponent_bot.tick()
+        if not self.active_match_id or not self.player_slot:
+            return None
+        opp_slot = "player2" if self.player_slot == "player1" else "player1"
+        try:
+            match_doc = self._firestore_get(f"matches/{self.active_match_id}")
+            if match_doc:
+                opp_data = match_doc.get(opp_slot, {})
+                if opp_data:
+                    return {
+                        "name": opp_data.get("name", "Opponent"),
+                        "equity": opp_data.get("equity", 25000.0),
+                        "pnl": opp_data.get("pnl", 0.0),
+                        "pnl_pct": opp_data.get("pnl_pct", 0.0),
+                        "status": opp_data.get("status", "playing")
+                    }
+        except Exception:
+            pass
         return None
 
     def forfeit_or_leave(self):
@@ -576,7 +604,7 @@ class FirebaseManager:
                         "status": "forfeited"
                     },
                     "status": "ended"
-                })
+                }, merge=True)
             except Exception:
                 pass
         self.active_match_id = None

@@ -213,6 +213,23 @@ class DayTradeSimApp(tk.Tk):
             )
             btn_reset.pack(side=tk.LEFT, padx=2)
 
+            # Return to Menu Button
+            btn_menu = tk.Button(
+                ctrl_f,
+                text="🏠 Menu",
+                font=("Segoe UI", 8, "bold"),
+                bg="#1e222d",
+                fg="#848e9c",
+                activebackground="#2a2e39",
+                activeforeground="#ffffff",
+                relief=tk.FLAT,
+                padx=8, pady=2,
+                cursor="hand2",
+                command=self._handle_return_to_menu
+            )
+            btn_menu.pack(side=tk.LEFT, padx=(6, 2))
+
+
     def _build_battle_hud(self):
         """Constructs 1v1 battle HUD panel at top of workspace."""
         my_name = getattr(self.fb_manager, "display_name", "You") or "You"
@@ -322,6 +339,8 @@ class DayTradeSimApp(tk.Tk):
         self.bind("<Key-X>", make_safe_handler(self.trading_panel.do_short))
         self.bind("<Key-c>", make_safe_handler(self.trading_panel.do_cover))
         self.bind("<Key-C>", make_safe_handler(self.trading_panel.do_cover))
+        self.bind("<Key-r>", make_safe_handler(self.trading_panel.do_reverse))
+        self.bind("<Key-R>", make_safe_handler(self.trading_panel.do_reverse))
         self.bind("<Key-m>", make_safe_handler(self.trading_panel._set_all_pos))
         self.bind("<Key-M>", make_safe_handler(self.trading_panel._set_all_pos))
         self.bind("<Escape>", lambda e: self.trading_panel.do_flatten())
@@ -348,12 +367,18 @@ class DayTradeSimApp(tk.Tk):
 
     def _on_stock_selected(self, ticker: str):
         self.active_ticker = ticker
-        self.chart.set_stock(self.engine.stocks[ticker])
+        pos = self.engine.positions.get(ticker)
+        self.chart.set_stock(self.engine.stocks[ticker], position=pos)
         self.trading_panel.set_active_ticker(ticker)
 
     def _on_trade_executed(self):
         self.trade_log_panel.refresh_trades(self.engine.trades)
         self._update_header_metrics()
+        pos = self.engine.positions.get(self.active_ticker)
+        self.chart.set_position(pos)
+        if self.engine.trades:
+            latest = self.engine.trades[0]
+            self.chart.show_trade_notification(latest.action, latest.shares, latest.price, latest.ticker)
 
     def _set_difficulty(self, diff_name: str):
         self.engine.current_difficulty = diff_name
@@ -424,7 +449,9 @@ class DayTradeSimApp(tk.Tk):
                 self.news_feed_panel.trigger_flash(news)
                 self.news_feed_panel.refresh_news(self.engine.news_feed)
 
-            # Redraw active chart & trading panel at full tick rate
+            # Redraw active chart with position line & trading panel at full tick rate
+            pos = self.engine.positions.get(self.active_ticker)
+            self.chart.set_position(pos)
             self.chart.draw()
             self.trading_panel.update_display()
             self._update_header_metrics()
@@ -435,10 +462,30 @@ class DayTradeSimApp(tk.Tk):
                 if not time_ok and not self._match_dialog_open:
                     self._match_dialog_open = True
                     self.engine.is_paused = True
+
+                    # Fetch the absolute latest fresh opponent metrics
+                    final_opp_metrics = None
+                    if self.fb_manager:
+                        try:
+                            final_opp_metrics = self.fb_manager.get_latest_opponent_metrics()
+                        except Exception:
+                            pass
+
+                    opp_eq = self.battle_hud.opp_equity
+                    if final_opp_metrics and "equity" in final_opp_metrics:
+                        opp_eq = final_opp_metrics["equity"]
+                        self.battle_hud.opp_equity = opp_eq
+
+                    # If against simulated bot and still at initial 25000, advance tick for realistic score
+                    if opp_eq == 25000.0 and self.fb_manager and self.fb_manager.opponent_bot:
+                        self.fb_manager.opponent_bot.tick()
+                        opp_eq = self.fb_manager.opponent_bot.equity
+                        self.battle_hud.opp_equity = opp_eq
+
                     MatchEndDialog(
                         self,
                         my_equity=self.engine.total_equity,
-                        opp_equity=self.battle_hud.opp_equity,
+                        opp_equity=opp_eq,
                         my_name=self.battle_hud.my_name,
                         opp_name=self.battle_hud.opponent_name,
                         on_next=self._handle_next_opponent,
@@ -568,15 +615,34 @@ class DayTradeSimApp(tk.Tk):
         messagebox.showinfo("Matchmaking Timeout", "Could not find an opponent right now. Returning to main menu.")
         self._handle_leave_battle()
 
-    def _handle_leave_battle(self):
+    def _handle_return_to_menu(self):
+        """Cleans up active timers/processes and returns to the mode selection menu."""
         if self._loop_job:
-            self.after_cancel(self._loop_job)
+            try:
+                self.after_cancel(self._loop_job)
+            except Exception:
+                pass
             self._loop_job = None
-        if self.fb_manager:
-            self.fb_manager.forfeit_or_leave()
+        if self.mode == "online" and self.fb_manager:
+            try:
+                self.fb_manager.forfeit_or_leave()
+            except Exception:
+                pass
         self.destroy()
         if self.on_return_to_menu:
             self.on_return_to_menu()
+
+    def _handle_leave_battle(self):
+        self._handle_return_to_menu()
+
+    def destroy(self):
+        if getattr(self, "_loop_job", None):
+            try:
+                self.after_cancel(self._loop_job)
+            except Exception:
+                pass
+            self._loop_job = None
+        super().destroy()
 
     def _on_window_close(self):
         if self.mode == "online" and self.fb_manager:

@@ -100,12 +100,14 @@ class TradingPanel(tk.Frame):
         self.ent_shares.bind("<Key-X>", lambda e: self._shortcut_exec(self.do_short))
         self.ent_shares.bind("<Key-c>", lambda e: self._shortcut_exec(self.do_cover))
         self.ent_shares.bind("<Key-C>", lambda e: self._shortcut_exec(self.do_cover))
+        self.ent_shares.bind("<Key-r>", lambda e: self._shortcut_exec(self.do_reverse))
+        self.ent_shares.bind("<Key-R>", lambda e: self._shortcut_exec(self.do_reverse))
         self.ent_shares.bind("<Return>", lambda e: self._defocus())
         self.ent_shares.bind("<Escape>", lambda e: self._defocus())
 
-        # Quick preset buttons (Row 1: amounts)
+        # Quick preset buttons (Row 1: share amounts)
         btn_preset_f = tk.Frame(qty_card, bg=self.PANEL_BG)
-        btn_preset_f.pack(fill=tk.X, padx=10, pady=(0, 4))
+        btn_preset_f.pack(fill=tk.X, padx=10, pady=(0, 3))
 
         for q in [10, 50, 100, 500]:
             btn = tk.Button(
@@ -121,11 +123,49 @@ class TradingPanel(tk.Frame):
                 cursor="hand2",
                 width=4
             )
-            btn.pack(side=tk.LEFT, expand=True, padx=2)
+            btn.pack(side=tk.LEFT, expand=True, padx=1)
 
-        # Row 2: Smart Max Controls
+        # Row 2: Percentage of Purchasing Power Presets
+        btn_pct_f = tk.Frame(qty_card, bg=self.PANEL_BG)
+        btn_pct_f.pack(fill=tk.X, padx=10, pady=(0, 3))
+
+        for p_label, p_val in [("25%", 0.25), ("50%", 0.50), ("75%", 0.75), ("100%", 1.0)]:
+            btn = tk.Button(
+                btn_pct_f,
+                text=p_label,
+                bg="#232a3b",
+                fg="#64b5f6",
+                activebackground="#323e57",
+                activeforeground="#ffffff",
+                relief=tk.FLAT,
+                font=("Segoe UI", 7, "bold"),
+                command=lambda pct=p_val: self._set_pct_cash(pct),
+                cursor="hand2"
+            )
+            btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=1)
+
+        # Row 3: Nudge Adjustment Controls (-100, -10, +10, +100)
+        btn_nudge_f = tk.Frame(qty_card, bg=self.PANEL_BG)
+        btn_nudge_f.pack(fill=tk.X, padx=10, pady=(0, 4))
+
+        for n_label, n_val in [("-100", -100), ("-10", -10), ("+10", 10), ("+100", 100)]:
+            btn = tk.Button(
+                btn_nudge_f,
+                text=n_label,
+                bg="#1a1e29",
+                fg="#a0aab8",
+                activebackground="#2a3040",
+                activeforeground="#ffffff",
+                relief=tk.FLAT,
+                font=("Segoe UI", 7, "bold"),
+                command=lambda d=n_val: self._nudge_qty(d),
+                cursor="hand2"
+            )
+            btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=1)
+
+        # Row 4: Smart Max Controls
         btn_max_f = tk.Frame(qty_card, bg=self.PANEL_BG)
-        btn_max_f.pack(fill=tk.X, padx=10, pady=(0, 8))
+        btn_max_f.pack(fill=tk.X, padx=10, pady=(0, 6))
 
         btn_max_cash = tk.Button(
             btn_max_f,
@@ -157,7 +197,7 @@ class TradingPanel(tk.Frame):
 
         # Action Buttons
         btn_f = tk.Frame(self, bg=self.BG_COLOR)
-        btn_f.pack(fill=tk.X, padx=10, pady=4)
+        btn_f.pack(fill=tk.X, padx=10, pady=2)
 
         # Buy Button
         self.btn_buy = tk.Button(
@@ -171,9 +211,9 @@ class TradingPanel(tk.Frame):
             font=("Segoe UI", 11, "bold"),
             command=self.do_buy,
             cursor="hand2",
-            pady=6
+            pady=5
         )
-        self.btn_buy.pack(fill=tk.X, pady=(0, 6))
+        self.btn_buy.pack(fill=tk.X, pady=(0, 4))
 
         # Sell Button
         self.btn_sell = tk.Button(
@@ -187,13 +227,13 @@ class TradingPanel(tk.Frame):
             font=("Segoe UI", 11, "bold"),
             command=self.do_sell,
             cursor="hand2",
-            pady=6
+            pady=5
         )
-        self.btn_sell.pack(fill=tk.X, pady=(0, 6))
+        self.btn_sell.pack(fill=tk.X, pady=(0, 4))
 
         # Short & Cover Split Row
         sub_btn_f = tk.Frame(btn_f, bg=self.BG_COLOR)
-        sub_btn_f.pack(fill=tk.X, pady=(0, 6))
+        sub_btn_f.pack(fill=tk.X, pady=(0, 4))
 
         self.btn_short = tk.Button(
             sub_btn_f,
@@ -206,7 +246,7 @@ class TradingPanel(tk.Frame):
             cursor="hand2",
             pady=4
         )
-        self.btn_short.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 3))
+        self.btn_short.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 2))
 
         self.btn_cover = tk.Button(
             sub_btn_f,
@@ -219,21 +259,41 @@ class TradingPanel(tk.Frame):
             cursor="hand2",
             pady=4
         )
-        self.btn_cover.pack(side=tk.RIGHT, expand=True, fill=tk.X, padx=(3, 0))
+        self.btn_cover.pack(side=tk.RIGHT, expand=True, fill=tk.X, padx=(2, 0))
 
-        # Close Position Quick Action
+        # Reverse & Flatten Row (Ease of Use!)
+        pos_action_f = tk.Frame(btn_f, bg=self.BG_COLOR)
+        pos_action_f.pack(fill=tk.X, pady=(0, 2))
+
+        self.btn_reverse = tk.Button(
+            pos_action_f,
+            text="🔄 REVERSE (R)",
+            bg="#6a1b9a",
+            fg="#ffffff",
+            activebackground="#8e24aa",
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"),
+            command=self.do_reverse,
+            cursor="hand2",
+            pady=4
+        )
+        self.btn_reverse.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 2))
+
         self.btn_close = tk.Button(
-            btn_f,
-            text="FLATTEN POSITION (Esc / F8)",
+            pos_action_f,
+            text="FLATTEN (Esc)",
             bg="#363c4e",
             fg=self.TEXT_COLOR,
+            activebackground="#4a5268",
+            activeforeground="#ffffff",
             relief=tk.FLAT,
             font=("Segoe UI", 9, "bold"),
             command=self.do_flatten,
             cursor="hand2",
             pady=4
         )
-        self.btn_close.pack(fill=tk.X, pady=(4, 0))
+        self.btn_close.pack(side=tk.RIGHT, expand=True, fill=tk.X, padx=(2, 0))
 
         # Status / Feedback toast
         self.lbl_status = tk.Label(
@@ -264,6 +324,21 @@ class TradingPanel(tk.Frame):
     def _set_qty(self, qty: int):
         self.ent_shares.delete(0, tk.END)
         self.ent_shares.insert(0, str(qty))
+
+    def _set_pct_cash(self, pct: float):
+        """Set shares to a percentage of total purchasing power."""
+        stock = self.engine.stocks.get(self.active_ticker)
+        if not stock or stock.price <= 0:
+            return
+        total_shares = int((self.engine.cash * pct) // stock.price)
+        self._set_qty(max(1, total_shares) if total_shares > 0 else 0)
+        self._flash_status(f"Purchasing Power {int(pct*100)}%: {total_shares:,} shares")
+
+    def _nudge_qty(self, delta: int):
+        """Quickly adjust share count up or down."""
+        curr = self._get_qty()
+        new_val = max(1, curr + delta) if curr + delta > 0 else 0
+        self._set_qty(new_val)
 
     def _set_max_cash(self):
         """Set shares to maximum affordable using available cash."""
@@ -310,9 +385,6 @@ class TradingPanel(tk.Frame):
         stock = self.engine.stocks.get(self.active_ticker)
         if not stock:
             return
-        if self.engine.cash < qty * stock.price:
-            self._flash_status(f"Insufficient cash! Need ${(qty * stock.price):,.2f}", is_error=True)
-            return
 
         ok = self.engine.buy(self.active_ticker, qty)
         if ok:
@@ -321,7 +393,7 @@ class TradingPanel(tk.Frame):
                 self.on_trade_executed()
             self.update_display()
         else:
-            self._flash_status("Buy order rejected.", is_error=True)
+            self._flash_status(f"Buy order rejected (Need ${(qty * stock.price):,.2f}).", is_error=True)
 
     def do_sell(self):
         qty = self._get_qty()
@@ -345,10 +417,6 @@ class TradingPanel(tk.Frame):
         stock = self.engine.stocks.get(self.active_ticker)
         if not stock:
             return
-        pos = self.engine.positions.get(self.active_ticker)
-        if pos and pos.shares > 0:
-            self._flash_status("Close Long position first!", is_error=True)
-            return
 
         ok = self.engine.short(self.active_ticker, qty)
         if ok:
@@ -357,7 +425,8 @@ class TradingPanel(tk.Frame):
                 self.on_trade_executed()
             self.update_display()
         else:
-            self._flash_status("Short order rejected (Insufficient margin).", is_error=True)
+            req = qty * stock.price * 0.5
+            self._flash_status(f"Short rejected (Need margin ${req:,.2f}).", is_error=True)
 
     def do_cover(self):
         qty = self._get_qty()
@@ -375,6 +444,23 @@ class TradingPanel(tk.Frame):
             self.update_display()
         else:
             self._flash_status("Cover order rejected.", is_error=True)
+
+    def do_reverse(self):
+        pos = self.engine.positions.get(self.active_ticker)
+        if not pos or pos.shares == 0:
+            self._flash_status("No position to reverse!", is_error=True)
+            return
+        old_side = pos.side
+        old_shs = abs(pos.shares)
+        ok = self.engine.reverse_position(self.active_ticker)
+        if ok:
+            new_side = self.engine.positions[self.active_ticker].side
+            self._flash_status(f"Reversed {self.active_ticker} {old_side} ({old_shs} shs) -> {new_side}!")
+            if self.on_trade_executed:
+                self.on_trade_executed()
+            self.update_display()
+        else:
+            self._flash_status("Reverse order failed (insufficient cash/margin).", is_error=True)
 
     def do_flatten(self):
         pos = self.engine.positions.get(self.active_ticker)

@@ -1,6 +1,6 @@
 ; Script generated for Inno Setup Compiler
 #define MyAppName "Day Trading Simulator"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "Isaiah"
 #define MyAppURL "https://github.com/isaiah-sudo/daytradesim"
 #define MyAppExeName "DayTradeSim.exe"
@@ -19,7 +19,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 LicenseFile=LICENSE
 OutputDir=dist
-OutputBaseFilename=DayTradeSim-Setup-v1.1.0
+OutputBaseFilename=DayTradeSim-Setup-v1.2.0
 SetupIconFile=assets\icon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -57,7 +57,8 @@ Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\icon.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall
+
 
 [Code]
 function InitializeSetup(): Boolean;

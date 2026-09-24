@@ -1,5 +1,6 @@
 import tkinter as tk
-from typing import List, Optional
+import time
+from typing import List, Optional, Dict, Any
 from simulation.stock import Stock, Candle
 
 class CandlestickChart(tk.Frame):
@@ -10,6 +11,9 @@ class CandlestickChart(tk.Frame):
     - 20-period SMA line
     - Volume histogram
     - Current price dotted guide line + badge
+    - Trade execution markers over candles
+    - Average entry price position guide line
+    - Floating trade notifications / toast banner
     - Crosshair & HUD tooltip on mouse hover
     """
     BG_COLOR = "#131722"
@@ -25,6 +29,8 @@ class CandlestickChart(tk.Frame):
     def __init__(self, parent, stock: Optional[Stock] = None, **kwargs):
         super().__init__(parent, bg=self.BG_COLOR, **kwargs)
         self.stock = stock
+        self.position: Optional[Any] = None
+        self.active_notification: Optional[Dict[str, Any]] = None
 
         self.canvas = tk.Canvas(self, bg=self.BG_COLOR, highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
@@ -38,8 +44,24 @@ class CandlestickChart(tk.Frame):
         self.canvas.bind("<Leave>", self._on_mouse_leave)
         self.canvas.bind("<Configure>", lambda e: self.draw())
 
-    def set_stock(self, stock: Stock):
+    def set_stock(self, stock: Stock, position: Optional[Any] = None):
         self.stock = stock
+        if position is not None:
+            self.position = position
+        self.draw()
+
+    def set_position(self, position: Optional[Any]):
+        self.position = position
+
+    def show_trade_notification(self, action: str, shares: int, price: float, ticker: str):
+        """Displays a prominent on-chart floating toast notification for executed trade."""
+        self.active_notification = {
+            "action": action,
+            "shares": shares,
+            "price": price,
+            "ticker": ticker,
+            "time": time.time()
+        }
         self.draw()
 
     def _on_mouse_move(self, event):
@@ -230,6 +252,145 @@ class CandlestickChart(tk.Frame):
             font=("Segoe UI", 9, "bold")
         )
 
+        # --- DRAW TRADE MARKERS OVER CANDLES ---
+        if self.stock and self.stock.trade_markers:
+            for i, c in enumerate(visible_candles):
+                cx = candle_centers[i]
+                # Match markers for this candle
+                markers = [m for m in self.stock.trade_markers if abs(m.candle_timestamp - c.timestamp) < 0.001]
+                if not markers:
+                    continue
+
+                for marker in markers:
+                    act = marker.action.upper()
+                    shs = marker.shares
+                    if act in ("BUY", "COVER"):
+                        # Render BELOW candle low pointing up
+                        color = self.GREEN_CANDLE if act == "BUY" else "#2962ff"
+                        base_y = p_to_y(c.low) + 16
+                        base_y = min(vol_top - 18, max(top_margin + 24, base_y))
+                        # Upward pointer
+                        self.canvas.create_polygon(
+                            cx, p_to_y(c.low) + 3,
+                            cx - 5, base_y - 2,
+                            cx + 5, base_y - 2,
+                            fill=color, outline=""
+                        )
+                        # Pill badge
+                        badge_txt = f"+{shs}" if act == "BUY" else f"COV {shs}"
+                        pw = max(38, len(badge_txt) * 7 + 10)
+                        self.canvas.create_rectangle(
+                            cx - pw/2, base_y - 2,
+                            cx + pw/2, base_y + 14,
+                            fill=color, outline="#ffffff", width=1
+                        )
+                        self.canvas.create_text(
+                            cx, base_y + 6,
+                            text=badge_txt,
+                            fill="#ffffff",
+                            font=("Segoe UI", 8, "bold")
+                        )
+                    else:
+                        # Render ABOVE candle high pointing down
+                        color = self.RED_CANDLE if act == "SHORT" else "#ff9800"
+                        base_y = p_to_y(c.high) - 16
+                        base_y = max(top_margin + 12, min(vol_top - 24, base_y))
+                        # Downward pointer
+                        self.canvas.create_polygon(
+                            cx, p_to_y(c.high) - 3,
+                            cx - 5, base_y + 2,
+                            cx + 5, base_y + 2,
+                            fill=color, outline=""
+                        )
+                        # Pill badge
+                        badge_txt = f"-{shs}" if act == "SHORT" else f"SEL {shs}"
+                        pw = max(38, len(badge_txt) * 7 + 10)
+                        self.canvas.create_rectangle(
+                            cx - pw/2, base_y - 14,
+                            cx + pw/2, base_y + 2,
+                            fill=color, outline="#ffffff", width=1
+                        )
+                        self.canvas.create_text(
+                            cx, base_y - 6,
+                            text=badge_txt,
+                            fill="#ffffff",
+                            font=("Segoe UI", 8, "bold")
+                        )
+
+        # --- DRAW ACTIVE POSITION ENTRY PRICE GUIDE LINE ---
+        if self.position and self.position.shares != 0 and self.position.avg_price > 0:
+            pos_y = p_to_y(self.position.avg_price)
+            if top_margin <= pos_y <= vol_top:
+                is_long = self.position.shares > 0
+                pos_col = "#00e676" if is_long else "#ff5252"
+                self.canvas.create_line(left_margin, pos_y, width - right_margin, pos_y, fill=pos_col, dash=(4, 4), width=1.5)
+
+                pnl = self.position.unrealized_pnl(self.stock.price)
+                pct = self.position.unrealized_pnl_pct(self.stock.price)
+                side_lbl = f"LONG {self.position.shares}" if is_long else f"SHORT {abs(self.position.shares)}"
+                pos_text = f"🎯 {side_lbl} @ ${self.position.avg_price:.2f} ({'+' if pnl >= 0 else ''}${pnl:,.2f} | {'+' if pct >= 0 else ''}{pct:.1f}%)"
+
+                badge_w = len(pos_text) * 6.5 + 14
+                self.canvas.create_rectangle(
+                    left_margin + 6, pos_y - 9,
+                    left_margin + 6 + badge_w, pos_y + 9,
+                    fill="#161a25", outline=pos_col, width=1
+                )
+                self.canvas.create_text(
+                    left_margin + 12, pos_y,
+                    text=pos_text,
+                    fill=pos_col,
+                    anchor="w",
+                    font=("Segoe UI", 8, "bold")
+                )
+
+        # --- DRAW FLOATING TRADE NOTIFICATION TOAST ---
+        if self.active_notification:
+            elapsed = time.time() - self.active_notification["time"]
+            if elapsed < 3.5:
+                n = self.active_notification
+                act = n["action"].upper()
+                if act == "BUY":
+                    badge_col = "#089981"
+                    icon = "🛒"
+                    title = f"BOUGHT {n['shares']:,} {n['ticker']} @ ${n['price']:.2f}"
+                    sub = f"Cost: ${n['shares'] * n['price']:,.2f}"
+                elif act == "SHORT":
+                    badge_col = "#f23645"
+                    icon = "⚡"
+                    title = f"SHORTED {n['shares']:,} {n['ticker']} @ ${n['price']:.2f}"
+                    sub = f"Margin: ${n['shares'] * n['price'] * 0.5:,.2f}"
+                elif act == "SELL":
+                    badge_col = "#ff9800"
+                    icon = "💰"
+                    title = f"SOLD {n['shares']:,} {n['ticker']} @ ${n['price']:.2f}"
+                    sub = "Closed / Reduced Long"
+                else:
+                    badge_col = "#2962ff"
+                    icon = "🛡️"
+                    title = f"COVERED {n['shares']:,} {n['ticker']} @ ${n['price']:.2f}"
+                    sub = "Closed / Reduced Short"
+
+                toast_text = f"{icon} {title}  •  {sub}"
+                card_w = max(320, len(toast_text) * 7.5 + 24)
+                card_h = 30
+                center_x = (width - right_margin + left_margin) / 2
+                top_y = top_margin + 4
+
+                self.canvas.create_rectangle(
+                    center_x - card_w/2, top_y,
+                    center_x + card_w/2, top_y + card_h,
+                    fill="#161a25", outline=badge_col, width=1.5
+                )
+                self.canvas.create_text(
+                    center_x, top_y + card_h/2,
+                    text=toast_text,
+                    fill="#ffffff",
+                    font=("Segoe UI", 9, "bold")
+                )
+            else:
+                self.active_notification = None
+
         # --- DRAW HEADER INFO ---
         self._draw_header(left_margin)
 
@@ -311,8 +472,15 @@ class CandlestickChart(tk.Frame):
             tags="crosshair"
         )
 
+        # Check if hovered candle has trade markers
+        markers = [m for m in self.stock.trade_markers if abs(m.candle_timestamp - candle.timestamp) < 0.001] if self.stock else []
+        marker_str = ""
+        if markers:
+            m_parts = [f"{m.action} {m.shares} @ ${m.price:.2f}" for m in markers]
+            marker_str = " | ★ " + ", ".join(m_parts)
+
         # Floating HUD at top right of canvas
-        hud_text = f"O: ${candle.open:.2f}  H: ${candle.high:.2f}  L: ${candle.low:.2f}  C: ${candle.close:.2f}  Vol: {candle.volume:,}"
+        hud_text = f"O: ${candle.open:.2f}  H: ${candle.high:.2f}  L: ${candle.low:.2f}  C: ${candle.close:.2f}  Vol: {candle.volume:,}{marker_str}"
         self.canvas.create_text(
             w - right_m - 10, 18,
             text=hud_text,

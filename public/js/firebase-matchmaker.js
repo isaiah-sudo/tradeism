@@ -119,7 +119,10 @@ class FirebaseMatchmaker {
     }
 
     async signInAnonymous(name) {
-        this.displayName = name || `WebTrader_${Math.floor(100 + Math.random() * 900)}`;
+        if (name) this.displayName = name.trim();
+        if (!this.displayName) {
+            this.displayName = `WebTrader_${Math.floor(100 + Math.random() * 900)}`;
+        }
 
         try {
             const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${this.apiKey}`, {
@@ -199,7 +202,13 @@ class FirebaseMatchmaker {
         }
     }
 
-    async findMatch(onStatusUpdate, abortSignal) {
+    async findMatch(onStatusUpdate, abortSignal, customDisplayName) {
+        if (customDisplayName) {
+            this.displayName = customDisplayName.trim();
+        }
+        if (!this.displayName) {
+            this.displayName = `WebTrader_${Math.floor(100 + Math.random() * 900)}`;
+        }
         if (!this.userId) {
             await this.signInAnonymous(this.displayName);
         }
@@ -210,145 +219,182 @@ class FirebaseMatchmaker {
         if (onStatusUpdate) onStatusUpdate("Searching global matchmaking queue...");
 
         try {
-            // 1. Check existing tickets in match_queue
-            const listRes = await fetch(`${this.firestoreBaseUrl}/match_queue`);
-            let documents = [];
-            if (listRes.ok) {
-                const listData = await listRes.json();
-                documents = listData.documents || [];
-            }
-
-            let foundCandidate = null;
-            for (const doc of documents) {
-                const docName = (doc.name || "").split("/").pop();
-                const data = firestoreDocToDict(doc);
-                if (docName !== this.userId && data.status === "waiting") {
-                    const t = data.timestamp || 0;
-                    if ((now - t) < 45.0) {
-                        foundCandidate = data;
-                        foundCandidate.uid = docName;
-                        break;
-                    }
-                }
-            }
-
-            if (foundCandidate) {
-                if (onStatusUpdate) onStatusUpdate(`Opponent found! Establishing match room...`);
-
-                const oppUid = foundCandidate.uid;
-                const oppName = foundCandidate.name || "Desktop Trader";
-                const matchId = `m_${this.userId.slice(0, 4)}_${oppUid.slice(0, 4)}_${Math.floor(now)}`;
-                const seed = Math.floor(100000 + Math.random() * 900000);
-
-                const matchData = {
-                    match_id: matchId,
-                    seed: seed,
-                    duration_seconds: 180,
-                    start_time: now + 2.0,
-                    status: "active",
-                    player1: {
-                        uid: oppUid,
-                        name: oppName,
-                        equity: 25000.0,
-                        pnl: 0.0,
-                        pnl_pct: 0.0,
-                        status: "playing",
-                        last_update: now
-                    },
-                    player2: {
-                        uid: this.userId,
-                        name: this.displayName,
-                        equity: 25000.0,
-                        pnl: 0.0,
-                        pnl_pct: 0.0,
-                        status: "playing",
-                        last_update: now
-                    }
-                };
-
-                // Create match room
-                await this._firestoreSet(`matches/${matchId}`, matchData);
-
-                // Notify opponent ticket
-                await this._firestoreSet(`match_queue/${oppUid}`, {
-                    name: oppName,
-                    status: "matched",
-                    match_id: matchId,
-                    seed: seed,
-                    timestamp: now
-                });
-
-                // Clear self from queue
-                await this._firestoreDelete(queuePath);
-
-                this.activeMatchId = matchId;
-                this.playerSlot = "player2";
-                this.opponentBot = null;
-
-                return {
-                    matchId: matchId,
-                    seed: seed,
-                    durationSeconds: 180,
-                    startTime: now + 2.0,
-                    playerSlot: "player2",
-                    opponent: {
-                        uid: oppUid,
-                        name: oppName,
-                        equity: 25000.0,
-                        pnl: 0.0,
-                        pnl_pct: 0.0
-                    }
-                };
-            }
-
-            // 2. Register self in queue as waiting
-            if (onStatusUpdate) onStatusUpdate("Broadcasting queue ticket to desktop & web traders...");
+            // 1. Register self in queue as waiting (overwrite any stale entry)
             await this._firestoreSet(queuePath, {
                 name: this.displayName,
                 status: "waiting",
                 timestamp: now
-            });
+            }, false);
 
-            // Poll for match assignment (up to 12s before deploying dynamic rival)
+            // Polling loop: up to 15 seconds before bot fallback
             const pollStart = Date.now();
-            while ((Date.now() - pollStart) < 12000) {
+            while ((Date.now() - pollStart) < 15000) {
                 if (abortSignal && abortSignal.aborted) {
                     await this._firestoreDelete(queuePath);
                     return null;
                 }
 
-                await new Promise(r => setTimeout(r, 1000));
+                await new Promise(r => setTimeout(r, 500));
+
+                // A. Check if our ticket was matched by another player
                 const ticket = await this._firestoreGet(queuePath);
                 if (ticket && ticket.status === "matched") {
                     const matchId = ticket.match_id;
-                    const matchDoc = await this._firestoreGet(`matches/${matchId}`);
+                    const slot = ticket.player_slot || "player2";
+                    let seed = ticket.seed || 12345;
+                    let startTime = ticket.start_time || (Date.now() / 1000);
+                    let oppName = ticket.opponent_name || "Opponent";
+                    let oppUid = ticket.opponent_uid || "";
+
+                    // Fetch match document with short retries for replication
+                    let matchDoc = null;
+                    for (let attempt = 0; attempt < 4; attempt++) {
+                        matchDoc = await this._firestoreGet(`matches/${matchId}`);
+                        if (matchDoc) break;
+                        await new Promise(r => setTimeout(r, 250));
+                    }
+
                     await this._firestoreDelete(queuePath);
 
                     if (matchDoc) {
+                        const oppSlot = slot === "player2" ? "player1" : "player2";
+                        const oppData = matchDoc[oppSlot] || {};
+                        oppName = oppData.name || oppName;
+                        oppUid = oppData.uid || oppUid;
+                        seed = matchDoc.seed || seed;
+                        startTime = matchDoc.start_time || startTime;
+                    }
+
+                    this.activeMatchId = matchId;
+                    this.playerSlot = slot;
+                    this.opponentBot = null;
+
+                    return {
+                        matchId: matchId,
+                        seed: seed,
+                        durationSeconds: 180,
+                        startTime: startTime,
+                        playerSlot: slot,
+                        opponent: {
+                            uid: oppUid,
+                            name: oppName,
+                            equity: 25000.0,
+                            pnl: 0.0,
+                            pnl_pct: 0.0
+                        }
+                    };
+                }
+
+                // B. Look for other waiting candidates in match_queue
+                const headers = {};
+                if (this.idToken) headers["Authorization"] = `Bearer ${this.idToken}`;
+                let documents = [];
+                try {
+                    const listRes = await fetch(`${this.firestoreBaseUrl}/match_queue`, { headers });
+                    if (listRes.ok) {
+                        const listData = await listRes.json();
+                        documents = listData.documents || [];
+                    }
+                } catch (err) {
+                    console.warn("[Firebase] Queue fetch error:", err);
+                }
+
+                const currTime = Date.now() / 1000;
+                const candidates = [];
+                for (const doc of documents) {
+                    const docName = (doc.name || "").split("/").pop();
+                    const data = firestoreDocToDict(doc);
+                    if (docName !== this.userId && data.status === "waiting") {
+                        const t = data.timestamp || 0;
+                        if ((currTime - t) < 60.0) {
+                            data.uid = docName;
+                            candidates.push(data);
+                        }
+                    }
+                }
+
+                if (candidates.length > 0) {
+                    // Sort candidates by timestamp (oldest first)
+                    candidates.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+                    const cand = candidates[0];
+                    const candUid = cand.uid;
+                    const candName = cand.name || "Opponent";
+                    const candTs = cand.timestamp || 0;
+
+                    // Deterministic tie-breaker: Lower UID creates match
+                    const shouldCreate = (this.userId < candUid);
+                    if (shouldCreate) {
+                        const matchId = `m_${this.userId.slice(0, 4)}_${candUid.slice(0, 4)}_${Math.floor(currTime)}`;
+                        const seed = Math.floor(100000 + Math.random() * 900000);
+
+                        const matchData = {
+                            match_id: matchId,
+                            seed: seed,
+                            duration_seconds: 180,
+                            start_time: currTime + 2.0,
+                            status: "active",
+                            player1: {
+                                uid: this.userId,
+                                name: this.displayName,
+                                equity: 25000.0,
+                                pnl: 0.0,
+                                pnl_pct: 0.0,
+                                status: "playing",
+                                last_update: currTime
+                            },
+                            player2: {
+                                uid: candUid,
+                                name: candName,
+                                equity: 25000.0,
+                                pnl: 0.0,
+                                pnl_pct: 0.0,
+                                status: "playing",
+                                last_update: currTime
+                            }
+                        };
+
+                        // 1. Create match room in Firestore
+                        await this._firestoreSet(`matches/${matchId}`, matchData, false);
+
+                        // 2. Update opponent's ticket with match details and OUR name
+                        await this._firestoreSet(`match_queue/${candUid}`, {
+                            name: candName,
+                            status: "matched",
+                            match_id: matchId,
+                            seed: seed,
+                            start_time: currTime + 2.0,
+                            player_slot: "player2",
+                            opponent_name: this.displayName,
+                            opponent_uid: this.userId,
+                            timestamp: currTime
+                        }, false);
+
+                        // 3. Clean up our own ticket
+                        await this._firestoreDelete(queuePath);
+
                         this.activeMatchId = matchId;
                         this.playerSlot = "player1";
                         this.opponentBot = null;
 
-                        const opp = matchDoc.player2 || {};
                         return {
                             matchId: matchId,
-                            seed: matchDoc.seed || 12345,
-                            durationSeconds: matchDoc.duration_seconds || 180,
-                            startTime: matchDoc.start_time || (Date.now() / 1000),
+                            seed: seed,
+                            durationSeconds: 180,
+                            startTime: currTime + 2.0,
                             playerSlot: "player1",
                             opponent: {
-                                uid: opp.uid || "",
-                                name: opp.name || "Opponent",
-                                equity: opp.equity || 25000.0,
-                                pnl: opp.pnl || 0.0,
-                                pnl_pct: opp.pnl_pct || 0.0
+                                uid: candUid,
+                                name: candName,
+                                equity: 25000.0,
+                                pnl: 0.0,
+                                pnl_pct: 0.0
                             }
                         };
                     }
                 }
             }
 
-            // 3. Fallback: Deploy simulated rival bot
+            // Fallback: Deploy simulated rival bot after 15s
             if (onStatusUpdate) onStatusUpdate("Deploying Wall Street Rival Bot for instant showdown...");
             await this._firestoreDelete(queuePath);
             this.opponentBot = new SimulatedOpponentBot();

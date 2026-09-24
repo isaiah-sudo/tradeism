@@ -402,9 +402,12 @@ class TradingApp {
     _bindEvents() {
         // Nickname
         this.elNicknameInput.value = this.nickname;
+        if (this.fb) this.fb.displayName = this.nickname;
         this.elNicknameInput.addEventListener("change", (e) => {
             this.nickname = e.target.value.trim() || `Trader_${Math.floor(100 + Math.random() * 900)}`;
             localStorage.setItem("trader_nickname", this.nickname);
+            if (this.fb) this.fb.displayName = this.nickname;
+            this._updateTitleBadge();
         });
 
         // Search & Sector filter
@@ -943,9 +946,11 @@ class TradingApp {
         this.searchAbortCtrl = new AbortController();
 
         try {
+            if (this.fb) this.fb.displayName = this.nickname;
             const matchData = await this.fb.findMatch(
                 (status) => { this.elMatchStatusTxt.textContent = status; },
-                this.searchAbortCtrl.signal
+                this.searchAbortCtrl.signal,
+                this.nickname
             );
 
             if (!matchData) return;
@@ -972,8 +977,9 @@ class TradingApp {
         this.elTopHeader.style.display = "none";
         this.elBattleHud.style.display = "flex";
 
+        const oppName = (matchData.opponent && matchData.opponent.name) ? matchData.opponent.name : "Opponent";
         this.elHudMyName.textContent = `YOU (${this.nickname})`;
-        this.elHudOppName.textContent = `OPPONENT (${matchData.opponent.name})`;
+        this.elHudOppName.textContent = `OPPONENT (${oppName})`;
 
         this._updateHudDisplay(25000.0, 0.0, 0.0, matchData.opponent);
 
@@ -1005,7 +1011,8 @@ class TradingApp {
                 if (oppData.status === "forfeited") {
                     clearInterval(this.syncMetricsInterval);
                     clearInterval(this.matchTimerInterval);
-                    this._showMatchEndModal("VICTORY! Opponent Left the Match", eq, oppData.equity);
+                    const currentOppName = (oppData && oppData.name) ? oppData.name : (this.matchData && this.matchData.opponent && this.matchData.opponent.name) ? this.matchData.opponent.name : "Opponent";
+                    this._showMatchEndModal(`VICTORY! ${currentOppName} Left the Match`, eq, oppData.equity);
                 }
             }
         }, 1500);
@@ -1017,9 +1024,17 @@ class TradingApp {
         const mySign = myPnl >= 0 ? "+" : "";
         this.elHudMyScore.textContent = `$${myEq.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${mySign}${myPnlPct.toFixed(2)}%)`;
 
-        const oppEq = opp.equity || 25000.0;
-        const oppPnl = opp.pnl || 0.0;
-        const oppPnlPct = opp.pnl_pct || 0.0;
+        const oppName = (opp && opp.name) ? opp.name : (this.matchData && this.matchData.opponent && this.matchData.opponent.name) ? this.matchData.opponent.name : "Opponent";
+        if (opp && opp.name) {
+            this.elHudOppName.textContent = `OPPONENT (${opp.name})`;
+            if (this.matchData && this.matchData.opponent) {
+                this.matchData.opponent.name = opp.name;
+            }
+        }
+
+        const oppEq = (opp && opp.equity !== undefined) ? opp.equity : 25000.0;
+        const oppPnl = (opp && opp.pnl !== undefined) ? opp.pnl : 0.0;
+        const oppPnlPct = (opp && opp.pnl_pct !== undefined) ? opp.pnl_pct : 0.0;
         const oppSign = oppPnl >= 0 ? "+" : "";
         this.elHudOppScore.textContent = `$${oppEq.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${oppSign}${oppPnlPct.toFixed(2)}%)`;
 
@@ -1032,7 +1047,7 @@ class TradingApp {
             this.elHudLeaderBadge.textContent = `🔥 YOU LEAD BY $${diff.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             this.elHudLeaderBadge.className = "hud-leader-badge up";
         } else {
-            this.elHudLeaderBadge.textContent = `⚠️ OPPONENT LEADS BY $${diff.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            this.elHudLeaderBadge.textContent = `⚠️ ${oppName} LEADS BY $${diff.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             this.elHudLeaderBadge.className = "hud-leader-badge down";
         }
     }
@@ -1060,17 +1075,18 @@ class TradingApp {
             this._bankProfit(myEq - 25000.0);
         }
 
+        const oppName = (this.matchData && this.matchData.opponent && this.matchData.opponent.name) ? this.matchData.opponent.name : "Opponent";
         let title = "MATCH COMPLETE: TIED!";
         if (myEq > oppEq) {
-            title = "🏆 VICTORY! YOU CRUSHED YOUR OPPONENT!";
+            title = `🏆 VICTORY! YOU DEFEATED ${oppName}!`;
             this.profile.duels_won = (this.profile.duels_won || 0) + 1;
             this._saveProfile();
             this.sfx.playWin(this.profile.equipped_sfx);
             if (window.winAnimations) {
-                window.winAnimations.play(this.profile.equipped_animation, "🏆 1v1 DUEL VICTORY! 🏆");
+                window.winAnimations.play(this.profile.equipped_animation, `🏆 1v1 DUEL VICTORY vs ${oppName}! 🏆`);
             }
         } else if (myEq < oppEq) {
-            title = "💀 DEFEAT! OPPONENT WON THIS ROUND!";
+            title = `💀 DEFEAT! ${oppName} WON THIS ROUND!`;
         }
 
         this._showMatchEndModal(title, myEq, oppEq);
@@ -1095,10 +1111,11 @@ class TradingApp {
             `;
         }
 
+        const oppName = (this.matchData && this.matchData.opponent && this.matchData.opponent.name) ? this.matchData.opponent.name : "Opponent";
         this.elEndDetails.innerHTML = `
             <div style="font-size:15px;margin-bottom:12px;color:var(--text-white);">
                 <b>Your Final Balance:</b> $${myEq.toFixed(2)} (${mySign}$${myPnl.toFixed(2)})<br>
-                <b>Opponent Final Balance:</b> $${oppEq.toFixed(2)} (${oppSign}$${oppPnl.toFixed(2)})
+                <b>${oppName} Final Balance:</b> $${oppEq.toFixed(2)} (${oppSign}$${oppPnl.toFixed(2)})
             </div>
             ${bankedHtml}
             <p style="color:var(--text-muted);font-size:12px;">Click Next Opponent to jump directly into another live 1v1 showdown!</p>

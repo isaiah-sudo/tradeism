@@ -1,6 +1,6 @@
 ; Script generated for Inno Setup Compiler
 #define MyAppName "Day Trading Simulator"
-#define MyAppVersion "2.0.1"
+#define MyAppVersion "2.0.2"
 #define MyAppPublisher "Isaiah"
 #define MyAppURL "https://github.com/isaiah-sudo/tradeism"
 #define MyAppExeName "DayTradeSim.exe"
@@ -19,7 +19,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 LicenseFile=LICENSE
 OutputDir=dist
-OutputBaseFilename=DayTradeSim-Setup-v2.0.1
+OutputBaseFilename=DayTradeSim-Setup-v2.0.2
 SetupIconFile=assets\icon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes

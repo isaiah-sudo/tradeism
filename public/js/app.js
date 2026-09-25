@@ -268,6 +268,8 @@ class TradingApp {
         this._renderScanner();
         this._selectTicker("NVXP");
         this._updateVaultDisplay();
+        this._updateAuthUi();
+        this._initAuthSession();
 
         // Start solo loop initially
         this._scheduleNextTick();
@@ -278,6 +280,7 @@ class TradingApp {
 
     _loadProfile() {
         const defaults = {
+            player_name: "",
             menu_balance: 0.0,
             total_profit_banked: 0.0,
             inventory: ["money_rain", "theme_default", "sfx_standard", "title_trader"],
@@ -285,7 +288,12 @@ class TradingApp {
             equipped_theme: "theme_default",
             equipped_sfx: "sfx_standard",
             equipped_title: "title_trader",
-            duels_won: 0
+            duels_won: 0,
+            auth_uid: "",
+            auth_email: "",
+            auth_display_name: "",
+            auth_id_token: "",
+            auth_refresh_token: ""
         };
         try {
             const raw = localStorage.getItem("daytradesim_profile");
@@ -295,6 +303,7 @@ class TradingApp {
                 defaults.inventory.forEach(defId => {
                     if (!p.inventory.includes(defId)) p.inventory.push(defId);
                 });
+                p.player_name = typeof p.player_name === "string" ? p.player_name : "";
                 p.menu_balance = typeof p.menu_balance === "number" ? p.menu_balance : 0.0;
                 p.total_profit_banked = typeof p.total_profit_banked === "number" ? p.total_profit_banked : 0.0;
                 p.equipped_animation = p.equipped_animation || "money_rain";
@@ -302,16 +311,80 @@ class TradingApp {
                 p.equipped_sfx = p.equipped_sfx || "sfx_standard";
                 p.equipped_title = p.equipped_title || "title_trader";
                 p.duels_won = typeof p.duels_won === "number" ? p.duels_won : 0;
+                p.auth_uid = typeof p.auth_uid === "string" ? p.auth_uid : "";
+                p.auth_email = typeof p.auth_email === "string" ? p.auth_email : "";
+                p.auth_display_name = typeof p.auth_display_name === "string" ? p.auth_display_name : "";
+                p.auth_id_token = typeof p.auth_id_token === "string" ? p.auth_id_token : "";
+                p.auth_refresh_token = typeof p.auth_refresh_token === "string" ? p.auth_refresh_token : "";
                 return p;
             }
         } catch (e) {}
         return defaults;
     }
 
-    _saveProfile() {
+    _saveProfile(syncCloud = true) {
         try {
             localStorage.setItem("daytradesim_profile", JSON.stringify(this.profile));
         } catch (e) {}
+        if (syncCloud && this.profile.auth_uid) {
+            this.syncToCloud();
+        }
+    }
+
+    applyCloudData(cloudData) {
+        if (!cloudData || typeof cloudData !== 'object') return;
+        if (cloudData.player_name) {
+            this.profile.player_name = cloudData.player_name;
+            this.nickname = cloudData.player_name;
+            localStorage.setItem("trader_nickname", this.nickname);
+            if (this.elNicknameInput) this.elNicknameInput.value = this.nickname;
+            if (this.fb) this.fb.displayName = this.nickname;
+        }
+        if (typeof cloudData.menu_balance === 'number') {
+            this.profile.menu_balance = Math.max(this.profile.menu_balance, cloudData.menu_balance);
+        }
+        if (typeof cloudData.total_profit_banked === 'number') {
+            this.profile.total_profit_banked = Math.max(this.profile.total_profit_banked, cloudData.total_profit_banked);
+        }
+        if (Array.isArray(cloudData.inventory)) {
+            cloudData.inventory.forEach(item => {
+                if (item && !this.profile.inventory.includes(item)) {
+                    this.profile.inventory.push(item);
+                }
+            });
+        }
+        if (cloudData.equipped_animation && this.profile.inventory.includes(cloudData.equipped_animation)) {
+            this.profile.equipped_animation = cloudData.equipped_animation;
+        }
+        if (cloudData.equipped_theme && this.profile.inventory.includes(cloudData.equipped_theme)) {
+            this.profile.equipped_theme = cloudData.equipped_theme;
+        }
+        if (typeof cloudData.duels_won === 'number') {
+            this.profile.duels_won = Math.max(this.profile.duels_won, cloudData.duels_won);
+        }
+        this._saveProfile(false);
+        this._updateVaultDisplay();
+        this._applyTheme();
+        this._updateTitleBadge();
+        this._updateAuthUi();
+    }
+
+    async syncToCloud() {
+        if (!this.profile.auth_uid || !this.fb) return;
+        const pData = {
+            player_name: this.nickname,
+            menu_balance: this.profile.menu_balance,
+            total_profit_banked: this.profile.total_profit_banked,
+            inventory: this.profile.inventory,
+            equipped_animation: this.profile.equipped_animation,
+            equipped_theme: this.profile.equipped_theme,
+            duels_won: this.profile.duels_won
+        };
+        try {
+            await this.fb.saveUserProfile(this.profile.auth_uid, pData);
+        } catch (e) {
+            console.warn("[CloudSync] Error saving profile:", e);
+        }
     }
 
     _bankProfit(profitAmount) {
@@ -392,6 +465,24 @@ class TradingApp {
         this.elShopVaultBal = document.getElementById("shop-vault-bal");
         this.elShopItemsList = document.getElementById("shop-items-list");
         this.elShopCatTabs = document.getElementById("shop-category-tabs");
+
+        // Auth UI & Modal
+        this.elTopLeftAuth = document.getElementById("modal-top-left-auth");
+        this.elModalAuth = document.getElementById("modal-auth");
+        this.elBtnGoogleAuth = document.getElementById("btn-google-auth");
+        this.elTabAuthSignin = document.getElementById("tab-auth-signin");
+        this.elTabAuthSignup = document.getElementById("tab-auth-signup");
+        this.elAuthGroupNick = document.getElementById("auth-group-nick");
+        this.elAuthInputNick = document.getElementById("auth-input-nick");
+        this.elAuthInputEmail = document.getElementById("auth-input-email");
+        this.elAuthInputPass = document.getElementById("auth-input-pass");
+        this.elBtnAuthSubmit = document.getElementById("btn-auth-submit");
+        this.elAuthStatusMsg = document.getElementById("auth-status-msg");
+        this.elBtnCloseAuth = document.getElementById("btn-close-auth");
+        this.elBtnCloseAuthView = document.getElementById("btn-close-auth-view");
+        this.elBtnAuthSync = document.getElementById("btn-auth-sync");
+        this.elBtnAuthSignout = document.getElementById("btn-auth-signout");
+        this.authMode = "signin";
     }
 
 
@@ -400,15 +491,53 @@ class TradingApp {
     }
 
     _bindEvents() {
-        // Nickname
+        // Nickname: persistent auto-save on input or change
         this.elNicknameInput.value = this.nickname;
         if (this.fb) this.fb.displayName = this.nickname;
-        this.elNicknameInput.addEventListener("change", (e) => {
-            this.nickname = e.target.value.trim() || `Trader_${Math.floor(100 + Math.random() * 900)}`;
-            localStorage.setItem("trader_nickname", this.nickname);
-            if (this.fb) this.fb.displayName = this.nickname;
-            this._updateTitleBadge();
-        });
+        const handleNick = (e) => {
+            const val = e.target.value.trim();
+            if (val) {
+                this.nickname = val;
+                this.profile.player_name = val;
+                localStorage.setItem("trader_nickname", val);
+                if (this.fb) this.fb.displayName = val;
+                this._saveProfile();
+                this._updateTitleBadge();
+                this._updateAuthUi();
+            }
+        };
+        this.elNicknameInput.addEventListener("input", handleNick);
+        this.elNicknameInput.addEventListener("change", handleNick);
+
+        // Auth Modal & Buttons
+        if (this.elTabAuthSignin) {
+            this.elTabAuthSignin.addEventListener("click", () => this._setAuthTab("signin"));
+        }
+        if (this.elTabAuthSignup) {
+            this.elTabAuthSignup.addEventListener("click", () => this._setAuthTab("signup"));
+        }
+        if (this.elBtnGoogleAuth) {
+            this.elBtnGoogleAuth.addEventListener("click", () => this._handleGoogleSignIn());
+        }
+        if (this.elBtnAuthSubmit) {
+            this.elBtnAuthSubmit.addEventListener("click", () => this._handleAuthSubmit());
+        }
+        if (this.elBtnCloseAuth) {
+            this.elBtnCloseAuth.addEventListener("click", () => {
+                if (this.elModalAuth) this.elModalAuth.style.display = "none";
+            });
+        }
+        if (this.elBtnCloseAuthView) {
+            this.elBtnCloseAuthView.addEventListener("click", () => {
+                if (this.elModalAuth) this.elModalAuth.style.display = "none";
+            });
+        }
+        if (this.elBtnAuthSync) {
+            this.elBtnAuthSync.addEventListener("click", () => this._handleManualSync());
+        }
+        if (this.elBtnAuthSignout) {
+            this.elBtnAuthSignout.addEventListener("click", () => this._handleSignOut());
+        }
 
         // Search & Sector filter
         this.elSearchInput.addEventListener("input", (e) => {
@@ -1369,6 +1498,236 @@ class TradingApp {
         setTimeout(() => {
             this._applyTheme();
         }, 2800);
+    }
+
+    // --- Authentication & Cloud Sync System ---
+    _initAuthSession() {
+        if (this.profile && this.profile.auth_uid && this.fb) {
+            this.fb.setAuthenticatedSession(
+                this.profile.auth_uid,
+                this.profile.auth_email,
+                this.profile.auth_display_name || this.nickname,
+                this.profile.auth_id_token,
+                this.profile.auth_refresh_token
+            );
+            this.fb.loadUserProfile(this.profile.auth_uid).then(cloudData => {
+                if (cloudData) this.applyCloudData(cloudData);
+            }).catch(e => console.warn("[Auth] Auto-sync error:", e));
+        }
+    }
+
+    _updateAuthUi() {
+        if (!this.elTopLeftAuth) return;
+        if (this.profile && this.profile.auth_uid) {
+            const name = this.nickname || this.profile.auth_display_name || "Trader";
+            this.elTopLeftAuth.innerHTML = `
+                <button class="btn-ctrl" id="btn-top-auth" style="background:#161a25;color:#00e676;border:1px solid #2a2e39;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer;">🟢 ${name}</button>
+                <button class="btn-ctrl" id="btn-top-signout" style="background:#1e222d;color:var(--text-muted);border:1px solid #2a2e39;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;">Sign Out</button>
+            `;
+            const bAuth = document.getElementById("btn-top-auth");
+            if (bAuth) bAuth.onclick = () => this._openAuthModal();
+            const bOut = document.getElementById("btn-top-signout");
+            if (bOut) bOut.onclick = () => this._handleSignOut();
+        } else {
+            this.elTopLeftAuth.innerHTML = `
+                <button class="btn-ctrl" id="btn-top-auth" style="background:#2962ff;color:#fff;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer;border:none;">👤 Sign In</button>
+            `;
+            const bAuth = document.getElementById("btn-top-auth");
+            if (bAuth) bAuth.onclick = () => this._openAuthModal();
+        }
+    }
+
+    _openAuthModal() {
+        if (!this.elModalAuth) return;
+        this.elModalAuth.style.display = "flex";
+        if (this.profile && this.profile.auth_uid) {
+            document.getElementById("auth-unauthed-view").style.display = "none";
+            document.getElementById("auth-authed-view").style.display = "block";
+            const name = this.nickname || this.profile.auth_display_name || "Trader";
+            document.getElementById("auth-user-name").textContent = name;
+            document.getElementById("auth-user-email").textContent = this.profile.auth_email || "Google Account";
+            document.getElementById("auth-vault-bal").textContent = `$${this.profile.menu_balance.toFixed(2)}`;
+            document.getElementById("auth-profit-banked").textContent = `$${this.profile.total_profit_banked.toFixed(2)}`;
+            document.getElementById("auth-items-count").textContent = `${this.profile.inventory.length} items`;
+            document.getElementById("auth-duels-won").textContent = `${this.profile.duels_won || 0}`;
+        } else {
+            document.getElementById("auth-unauthed-view").style.display = "block";
+            document.getElementById("auth-authed-view").style.display = "none";
+            if (this.elAuthStatusMsg) this.elAuthStatusMsg.style.display = "none";
+        }
+    }
+
+    _setAuthTab(mode) {
+        this.authMode = mode;
+        if (mode === "signin") {
+            if (this.elTabAuthSignin) {
+                this.elTabAuthSignin.style.background = "#2962ff";
+                this.elTabAuthSignin.style.color = "#fff";
+            }
+            if (this.elTabAuthSignup) {
+                this.elTabAuthSignup.style.background = "transparent";
+                this.elTabAuthSignup.style.color = "var(--text-muted)";
+            }
+            if (this.elAuthGroupNick) this.elAuthGroupNick.style.display = "none";
+            if (this.elBtnAuthSubmit) this.elBtnAuthSubmit.textContent = "Sign In";
+        } else {
+            if (this.elTabAuthSignup) {
+                this.elTabAuthSignup.style.background = "#2962ff";
+                this.elTabAuthSignup.style.color = "#fff";
+            }
+            if (this.elTabAuthSignin) {
+                this.elTabAuthSignin.style.background = "transparent";
+                this.elTabAuthSignin.style.color = "var(--text-muted)";
+            }
+            if (this.elAuthGroupNick) this.elAuthGroupNick.style.display = "block";
+            if (this.elBtnAuthSubmit) this.elBtnAuthSubmit.textContent = "Create Account";
+        }
+        if (this.elAuthStatusMsg) this.elAuthStatusMsg.style.display = "none";
+    }
+
+    async _handleGoogleSignIn() {
+        try {
+            if (typeof firebase === 'undefined' || !firebase.auth) {
+                alert("Firebase Auth SDK is loading or unavailable. Check network connection.");
+                return;
+            }
+            if (!firebase.apps.length) {
+                firebase.initializeApp({
+                    apiKey: this.fb.apiKey,
+                    projectId: this.fb.projectId,
+                    authDomain: "tradisim-188a6.firebaseapp.com"
+                });
+            }
+            const provider = new firebase.auth.GoogleAuthProvider();
+            const res = await firebase.auth().signInWithPopup(provider);
+            const user = res.user;
+            const idToken = await user.getIdToken();
+            await this._handleAuthSuccess(
+                user.uid,
+                user.email || "",
+                user.displayName || "",
+                idToken,
+                user.refreshToken || ""
+            );
+        } catch (e) {
+            console.error("[Google Auth Error]:", e);
+            if (this.elAuthStatusMsg) {
+                let msg = e.message || "Google sign in failed.";
+                if (e.code === 'auth/popup-closed-by-user') {
+                    msg = "Google sign-in popup was closed.";
+                }
+                this.elAuthStatusMsg.textContent = msg;
+                this.elAuthStatusMsg.style.display = "block";
+            }
+        }
+    }
+
+    async _handleAuthSubmit() {
+        const email = this.elAuthInputEmail ? this.elAuthInputEmail.value.trim() : "";
+        const pass = this.elAuthInputPass ? this.elAuthInputPass.value : "";
+        const nick = this.elAuthInputNick ? this.elAuthInputNick.value.trim() : "";
+
+        if (!email || !pass) {
+            if (this.elAuthStatusMsg) {
+                this.elAuthStatusMsg.textContent = "Please enter both email and password.";
+                this.elAuthStatusMsg.style.display = "block";
+            }
+            return;
+        }
+
+        if (this.elBtnAuthSubmit) {
+            this.elBtnAuthSubmit.disabled = true;
+            this.elBtnAuthSubmit.textContent = "Connecting...";
+        }
+
+        try {
+            let res;
+            if (this.authMode === "signup") {
+                res = await this.fb.signUpEmail(email, pass, nick);
+            } else {
+                res = await this.fb.signInEmail(email, pass);
+            }
+
+            if (res.success && res.data) {
+                await this._handleAuthSuccess(
+                    res.data.localId,
+                    email,
+                    nick || res.data.displayName || "",
+                    res.data.idToken,
+                    res.data.refreshToken || ""
+                );
+            } else {
+                if (this.elAuthStatusMsg) {
+                    this.elAuthStatusMsg.textContent = res.error || "Authentication failed.";
+                    this.elAuthStatusMsg.style.display = "block";
+                }
+            }
+        } catch (e) {
+            if (this.elAuthStatusMsg) {
+                this.elAuthStatusMsg.textContent = e.message || "Error connecting to server.";
+                this.elAuthStatusMsg.style.display = "block";
+            }
+        } finally {
+            if (this.elBtnAuthSubmit) {
+                this.elBtnAuthSubmit.disabled = false;
+                this.elBtnAuthSubmit.textContent = this.authMode === "signup" ? "Create Account" : "Sign In";
+            }
+        }
+    }
+
+    async _handleAuthSuccess(uid, email, displayName, idToken, refreshToken) {
+        this.profile.auth_uid = uid;
+        this.profile.auth_email = email;
+        this.profile.auth_display_name = displayName;
+        this.profile.auth_id_token = idToken;
+        this.profile.auth_refresh_token = refreshToken;
+
+        if (displayName && (!this.profile.player_name || this.profile.player_name.startsWith("Trader_"))) {
+            this.profile.player_name = displayName;
+            this.nickname = displayName;
+            localStorage.setItem("trader_nickname", this.nickname);
+            if (this.elNicknameInput) this.elNicknameInput.value = this.nickname;
+        }
+
+        if (this.fb) {
+            this.fb.setAuthenticatedSession(uid, email, displayName, idToken, refreshToken);
+        }
+
+        // Pull existing cloud profile
+        const cloudData = await this.fb.loadUserProfile(uid);
+        if (cloudData) {
+            this.applyCloudData(cloudData);
+        } else {
+            await this.syncToCloud();
+        }
+
+        this._saveProfile();
+        this._updateAuthUi();
+        if (this.elModalAuth) this.elModalAuth.style.display = "none";
+        alert(`Welcome, ${this.nickname}!\nAll your progress (name, balance, and shop items) is securely synced.`);
+    }
+
+    _handleSignOut() {
+        if (!confirm("Are you sure you want to sign out?")) return;
+        this.profile.auth_uid = "";
+        this.profile.auth_email = "";
+        this.profile.auth_display_name = "";
+        this.profile.auth_id_token = "";
+        this.profile.auth_refresh_token = "";
+        if (this.fb) this.fb.signOut();
+        this._saveProfile(false);
+        this._updateAuthUi();
+        if (this.elModalAuth) this.elModalAuth.style.display = "none";
+        alert("You have signed out. Progress is now stored locally.");
+    }
+
+    async _handleManualSync() {
+        if (!this.profile.auth_uid || !this.fb) return;
+        const cloudData = await this.fb.loadUserProfile(this.profile.auth_uid);
+        if (cloudData) this.applyCloudData(cloudData);
+        await this.syncToCloud();
+        this._updateVaultDisplay();
+        alert("All progress has been synchronized with the cloud!");
     }
 }
 

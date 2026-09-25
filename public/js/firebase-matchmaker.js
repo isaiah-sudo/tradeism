@@ -148,6 +148,81 @@ class FirebaseMatchmaker {
         }
     }
 
+    setAuthenticatedSession(userId, email = "", displayName = "", idToken = "", refreshToken = "") {
+        this.userId = userId;
+        this.email = email;
+        this.displayName = displayName || (email ? email.split('@')[0] : "Trader");
+        this.idToken = idToken;
+        this.refreshTokenStr = refreshToken;
+        this.isAnonymous = false;
+    }
+
+    signOut() {
+        this.userId = "";
+        this.email = "";
+        this.displayName = "";
+        this.idToken = "";
+        this.refreshTokenStr = "";
+        this.isAnonymous = true;
+    }
+
+    async signInEmail(email, password) {
+        try {
+            const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${this.apiKey}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password, returnSecureToken: true })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                this.setAuthenticatedSession(data.localId, email, data.displayName, data.idToken, data.refreshToken);
+                return { success: true, data };
+            } else {
+                return { success: false, error: data.error?.message || "Sign in failed" };
+            }
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    }
+
+    async signUpEmail(email, password, displayName = "") {
+        try {
+            const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${this.apiKey}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password, returnSecureToken: true })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                if (displayName) {
+                    try {
+                        await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:update?key=${this.apiKey}`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ idToken: data.idToken, displayName, returnSecureToken: true })
+                        });
+                    } catch (e) {}
+                }
+                this.setAuthenticatedSession(data.localId, email, displayName || data.displayName, data.idToken, data.refreshToken);
+                return { success: true, data };
+            } else {
+                return { success: false, error: data.error?.message || "Registration failed" };
+            }
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    }
+
+    async saveUserProfile(userId, profileData) {
+        if (!userId) return false;
+        return await this._firestoreSet(`users/${userId}`, profileData, true);
+    }
+
+    async loadUserProfile(userId) {
+        if (!userId) return null;
+        return await this._firestoreGet(`users/${userId}`);
+    }
+
     async _firestoreGet(path) {
         const headers = {};
         if (this.idToken) headers["Authorization"] = `Bearer ${this.idToken}`;

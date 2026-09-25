@@ -425,6 +425,20 @@ it("FirebaseMatchmaker initializes without syntax or runtime issues", () => {
     assert.ok(fb.firestoreBaseUrl.includes("tradisim-188a6"));
 });
 
+it("FirebaseMatchmaker manages authenticated sessions and profile methods", () => {
+    const fb = new FirebaseMatchmaker();
+    fb.setAuthenticatedSession("user_123", "trader@web.com", "WebAce", "id_token_xyz", "refresh_tok");
+    assert.strictEqual(fb.userId, "user_123");
+    assert.strictEqual(fb.email, "trader@web.com");
+    assert.strictEqual(fb.displayName, "WebAce");
+    assert.strictEqual(fb.isAnonymous, false);
+
+    fb.signOut();
+    assert.strictEqual(fb.userId, "");
+    assert.strictEqual(fb.email, "");
+    assert.strictEqual(fb.isAnonymous, true);
+});
+
 console.log("\n=================================================");
 console.log(`   TEST RESULTS: ${passedTests}/${totalTests} PASSED (100%)`);
 console.log("=================================================");

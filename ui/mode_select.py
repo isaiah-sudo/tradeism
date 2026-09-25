@@ -9,6 +9,7 @@ from version import __version__
 from network.updater import check_for_update, UpdateDialog
 from profile_manager import get_profile
 from ui.shop_dialog import ShopDialog
+from ui.sign_in_dialog import SignInDialog
 
 class FirebaseConfigDialog(tk.Toplevel):
     """Dialog allowing user to view and paste Firebase API Key and Project ID."""
@@ -138,6 +139,7 @@ class ModeSelectWindow(tk.Tk):
 
         self.profile = get_profile()
         self.fb_manager = FirebaseManager()
+        self._init_auth_session()
         self._cancel_search = threading.Event()
         self._search_thread: Optional[threading.Thread] = None
         self._latest_update_info: Optional[Dict[str, Any]] = None
@@ -222,6 +224,11 @@ class ModeSelectWindow(tk.Tk):
             command=self._open_shop
         )
         self.btn_open_shop.pack(side=tk.LEFT)
+
+        # Top-Left Control Bar (Account Sign In & Trader Badge)
+        self.top_left_ctrls = tk.Frame(self, bg=self.THEME_BG)
+        self.top_left_ctrls.place(relx=0.0, y=18, anchor="nw", x=25)
+        self._update_auth_ui()
 
         # Top-Right Control Bar (Check for Updates & Firebase Config)
         top_ctrls = tk.Frame(self, bg=self.THEME_BG)
@@ -363,7 +370,16 @@ class ModeSelectWindow(tk.Tk):
         tk.Label(name_f, text="Trader Nickname:", font=("Segoe UI", 9, "bold"), fg=self.TEXT_MUTED, bg=self.CARD_BG).pack(anchor="w")
         self.ent_nickname = tk.Entry(name_f, font=("Segoe UI", 10), bg="#0e1117", fg="#00e676", insertbackground="#ffffff", relief=tk.FLAT)
         self.ent_nickname.pack(fill=tk.X, pady=(3, 0), ipady=3)
-        self.ent_nickname.insert(0, f"Trader_{random.randint(100, 999)}")
+
+        # Load persisted trader name from profile
+        saved_name = self.profile.player_name.strip() if self.profile.player_name else f"Trader_{random.randint(100, 999)}"
+        self.profile.player_name = saved_name
+        self.profile.save(sync_cloud=False)
+        self.ent_nickname.insert(0, saved_name)
+
+        # Auto-save whenever user types or moves focus away
+        self.ent_nickname.bind("<KeyRelease>", self._on_nickname_changed)
+        self.ent_nickname.bind("<FocusOut>", self._on_nickname_changed)
 
         # Search / Matchmaking Status Area
         self.status_f = tk.Frame(online_card, bg=self.CARD_BG)
@@ -418,6 +434,120 @@ class ModeSelectWindow(tk.Tk):
         else:
             self.lbl_footer.config(text=backend_str, fg=backend_color)
 
+    def _init_auth_session(self):
+        """Initializes Firebase session with stored credentials and syncs profile from cloud."""
+        if self.profile.is_authenticated():
+            self.fb_manager.set_authenticated_session(
+                user_id=self.profile.auth_uid,
+                email=self.profile.auth_email,
+                display_name=self.profile.auth_display_name or self.profile.player_name,
+                id_token=self.profile.auth_id_token,
+                refresh_token=self.profile.auth_refresh_token
+            )
+
+            def worker():
+                try:
+                    if self.profile.auth_refresh_token:
+                        self.fb_manager.refresh_token(self.profile.auth_refresh_token)
+                        self.profile.auth_id_token = self.fb_manager.id_token
+                    cloud_data = self.fb_manager.load_user_profile(self.profile.auth_uid)
+                    if cloud_data:
+                        self.profile.apply_cloud_data(cloud_data)
+                        self.after(0, self._on_cloud_profile_synced)
+                except Exception as e:
+                    print(f"[ModeSelectWindow] Auto-sync background error: {e}")
+
+            threading.Thread(target=worker, daemon=True).start()
+
+    def _on_cloud_profile_synced(self):
+        self._update_vault_display()
+        self._update_auth_ui()
+        if hasattr(self, "ent_nickname") and self.ent_nickname:
+            self.ent_nickname.delete(0, tk.END)
+            self.ent_nickname.insert(0, self.profile.player_name)
+
+    def _update_auth_ui(self):
+        """Builds or refreshes the top-left sign-in button or user account badge."""
+        if not hasattr(self, "top_left_ctrls") or not self.top_left_ctrls:
+            return
+
+        for w in self.top_left_ctrls.winfo_children():
+            w.destroy()
+
+        if self.profile.is_authenticated():
+            name_disp = self.profile.player_name or self.profile.auth_display_name or "Trader"
+            if len(name_disp) > 14:
+                name_disp = name_disp[:12] + "…"
+
+            btn_user = tk.Button(
+                self.top_left_ctrls,
+                text=f"🟢 {name_disp}",
+                font=("Segoe UI", 9, "bold"),
+                bg="#161a25",
+                fg=self.GREEN,
+                activebackground="#1e222d",
+                activeforeground=self.GREEN,
+                relief=tk.FLAT,
+                padx=10, pady=3,
+                cursor="hand2",
+                command=self._open_sign_in
+            )
+            btn_user.pack(side=tk.LEFT, padx=(0, 6))
+
+            btn_signout = tk.Button(
+                self.top_left_ctrls,
+                text="Sign Out",
+                font=("Segoe UI", 8),
+                bg="#1e222d",
+                fg=self.TEXT_MUTED,
+                activebackground="#2a2e39",
+                activeforeground="#ff5252",
+                relief=tk.FLAT,
+                padx=8, pady=3,
+                cursor="hand2",
+                command=self._handle_quick_sign_out
+            )
+            btn_signout.pack(side=tk.LEFT)
+        else:
+            btn_signin = tk.Button(
+                self.top_left_ctrls,
+                text="👤 Sign In",
+                font=("Segoe UI", 9, "bold"),
+                bg=self.BLUE,
+                fg="#ffffff",
+                activebackground="#3d72ff",
+                activeforeground="#ffffff",
+                relief=tk.FLAT,
+                padx=12, pady=4,
+                cursor="hand2",
+                command=self._open_sign_in
+            )
+            btn_signin.pack(side=tk.LEFT)
+
+    def _open_sign_in(self):
+        SignInDialog(self, fb_manager=self.fb_manager, on_auth_changed=self._on_auth_state_changed)
+
+    def _on_auth_state_changed(self):
+        self._update_vault_display()
+        self._update_auth_ui()
+        self._update_footer_status()
+        if hasattr(self, "ent_nickname") and self.ent_nickname:
+            self.ent_nickname.delete(0, tk.END)
+            self.ent_nickname.insert(0, self.profile.player_name)
+
+    def _handle_quick_sign_out(self):
+        if messagebox.askyesno("Sign Out", "Are you sure you want to sign out?"):
+            self.fb_manager.sign_out()
+            self.profile.clear_auth()
+            self._on_auth_state_changed()
+            messagebox.showinfo("Signed Out", "You have signed out. Progress is now stored locally as guest.")
+
+    def _on_nickname_changed(self, event=None):
+        val = self.ent_nickname.get().strip()
+        if val:
+            self.profile.set_player_name(val)
+            self._update_auth_ui()
+
     def _open_config_dialog(self):
         FirebaseConfigDialog(self, self.fb_manager, on_saved=self._update_footer_status)
 
@@ -428,11 +558,15 @@ class ModeSelectWindow(tk.Tk):
         self.lbl_vault_balance.config(text=f"${self.profile.menu_balance:,.2f}")
 
     def _launch_solo(self):
+        val = self.ent_nickname.get().strip()
+        if val:
+            self.profile.set_player_name(val)
         self.destroy()
         self.on_start_solo()
 
     def _start_matchmaking(self):
-        nickname = self.ent_nickname.get().strip() or f"Trader_{random.randint(100, 999)}"
+        nickname = self.ent_nickname.get().strip() or self.profile.player_name or f"Trader_{random.randint(100, 999)}"
+        self.profile.set_player_name(nickname)
         self.btn_online.pack_forget()
         self.btn_cancel.pack(side=tk.BOTTOM, fill=tk.X, pady=(10, 0))
 
@@ -440,10 +574,13 @@ class ModeSelectWindow(tk.Tk):
         self._cancel_search.clear()
 
         def worker():
-            ok, msg = self.fb_manager.sign_in_anonymous(nickname)
-            if not ok:
-                self.after(0, lambda: self._on_match_error(msg))
-                return
+            if not self.profile.is_authenticated():
+                ok, msg = self.fb_manager.sign_in_anonymous(nickname)
+                if not ok:
+                    self.after(0, lambda: self._on_match_error(msg))
+                    return
+            else:
+                self.fb_manager.display_name = nickname
 
             self.after(0, lambda: self.lbl_queue_status.config(text="🔍 Searching for live opponent (Omegle queue)...", fg="#00e676"))
             match_data = self.fb_manager.find_match(self._cancel_search, display_name=nickname)

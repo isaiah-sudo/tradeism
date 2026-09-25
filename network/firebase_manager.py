@@ -5,6 +5,7 @@ import time
 import random
 import threading
 import urllib.request
+import urllib.parse
 import urllib.error
 import ssl
 from typing import Optional, Dict, Any, Tuple
@@ -281,6 +282,62 @@ class FirebaseManager:
                 return False, f"Sign Up Error: {err_msg}"
         except Exception as e:
             return False, f"Connection Error: {e}"
+
+    def set_authenticated_session(self, user_id: str, email: str = "", display_name: str = "",
+                                  id_token: str = "", refresh_token: str = ""):
+        """Sets the active authenticated session from Google OAuth, Email/Password, or stored session."""
+        self.user_id = user_id
+        self.email = email
+        self.display_name = display_name or (email.split('@')[0] if email else "Trader")
+        self.id_token = id_token
+        self.refresh_token_str = refresh_token
+        self.is_anonymous = False
+
+    def sign_out(self):
+        """Clears authenticated session and returns to anonymous guest state."""
+        self.user_id = ""
+        self.email = ""
+        self.id_token = ""
+        self.refresh_token_str = ""
+        self.display_name = ""
+        self.is_anonymous = True
+
+    def refresh_token(self, refresh_token: str) -> Tuple[bool, str]:
+        """Refreshes the Firebase ID token using Google Secure Token API."""
+        if not refresh_token or self.is_mock_mode:
+            return True, self.id_token
+
+        url = f"https://securetoken.googleapis.com/v1/token?key={self.api_key}"
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        post_data = urllib.parse.urlencode({"grant_type": "refresh_token", "refresh_token": refresh_token}).encode("utf-8")
+        req = urllib.request.Request(url, data=post_data, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=8) as r:
+                resp = json.loads(r.read().decode("utf-8"))
+                new_token = resp.get("id_token", "")
+                if new_token:
+                    self.id_token = new_token
+                    self.user_id = resp.get("user_id", self.user_id)
+                    return True, new_token
+                return False, "Failed to parse token"
+        except Exception as e:
+            return False, str(e)
+
+    def save_user_profile(self, user_id: str, profile_data: Dict[str, Any]) -> bool:
+        """Saves trader profile progress (name, balance, inventory, customizations) to Firestore."""
+        if not user_id:
+            return False
+        if self.is_mock_mode:
+            return True
+        return self._firestore_set(f"users/{user_id}", profile_data, merge=True)
+
+    def load_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Loads trader profile progress from Firestore."""
+        if not user_id:
+            return None
+        if self.is_mock_mode:
+            return None
+        return self._firestore_get(f"users/{user_id}")
 
     # --- FIRESTORE HELPERS ---
 

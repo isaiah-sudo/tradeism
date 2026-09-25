@@ -6,6 +6,8 @@ shop inventory, equipped win animations, and themes.
 
 import os
 import json
+import threading
+import random
 from typing import Dict, List, Any, Optional
 
 SHOP_ITEMS: List[Dict[str, Any]] = [
@@ -87,15 +89,23 @@ SHOP_ITEM_MAP: Dict[str, Dict[str, Any]] = {item["id"]: item for item in SHOP_IT
 
 
 class UserProfile:
-    """Manages locally saved user balance, inventory, and customizations."""
+    """Manages locally saved user balance, inventory, trader name, and cloud customizations."""
 
     def __init__(self):
+        self.player_name: str = ""
         self.menu_balance: float = 0.0
         self.total_profit_banked: float = 0.0
         self.inventory: List[str] = ["money_rain"]
         self.equipped_animation: str = "money_rain"
         self.equipped_theme: str = "default"
         self.duels_won: int = 0
+        # Cloud Authentication Info
+        self.auth_uid: str = ""
+        self.auth_email: str = ""
+        self.auth_display_name: str = ""
+        self.auth_id_token: str = ""
+        self.auth_refresh_token: str = ""
+
         self._file_path = self._get_storage_path()
         self.load()
 
@@ -117,6 +127,7 @@ class UserProfile:
         try:
             with open(self._file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
+                self.player_name = str(data.get("player_name", "") or "")
                 self.menu_balance = float(data.get("menu_balance", 0.0))
                 self.total_profit_banked = float(data.get("total_profit_banked", 0.0))
                 self.inventory = list(data.get("inventory", ["money_rain"]))
@@ -125,12 +136,74 @@ class UserProfile:
                 self.equipped_animation = str(data.get("equipped_animation", "money_rain"))
                 self.equipped_theme = str(data.get("equipped_theme", "default"))
                 self.duels_won = int(data.get("duels_won", 0))
+                self.auth_uid = str(data.get("auth_uid", "") or "")
+                self.auth_email = str(data.get("auth_email", "") or "")
+                self.auth_display_name = str(data.get("auth_display_name", "") or "")
+                self.auth_id_token = str(data.get("auth_id_token", "") or "")
+                self.auth_refresh_token = str(data.get("auth_refresh_token", "") or "")
         except Exception:
             pass
 
-    def save(self):
-        """Persists profile data to local JSON file."""
+    def save(self, sync_cloud: bool = True):
+        """Persists profile data to local JSON file and syncs to cloud if logged in."""
         data = {
+            "player_name": self.player_name,
+            "menu_balance": round(self.menu_balance, 2),
+            "total_profit_banked": round(self.total_profit_banked, 2),
+            "inventory": self.inventory,
+            "equipped_animation": self.equipped_animation,
+            "equipped_theme": self.equipped_theme,
+            "duels_won": self.duels_won,
+            "auth_uid": self.auth_uid,
+            "auth_email": self.auth_email,
+            "auth_display_name": self.auth_display_name,
+            "auth_id_token": self.auth_id_token,
+            "auth_refresh_token": self.auth_refresh_token
+        }
+        try:
+            with open(self._file_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception:
+            pass
+
+        if sync_cloud and self.is_authenticated():
+            self.sync_to_cloud()
+
+    def set_player_name(self, name: str) -> None:
+        """Sets trader nickname and persists it."""
+        cleaned = name.strip()
+        if cleaned and cleaned != self.player_name:
+            self.player_name = cleaned
+            self.save()
+
+    def is_authenticated(self) -> bool:
+        return bool(self.auth_uid)
+
+    def set_auth(self, uid: str, email: str = "", display_name: str = "",
+                 id_token: str = "", refresh_token: str = ""):
+        """Saves authentication credentials and updates trader name if appropriate."""
+        self.auth_uid = uid
+        self.auth_email = email
+        self.auth_display_name = display_name
+        self.auth_id_token = id_token
+        self.auth_refresh_token = refresh_token
+        if display_name and (not self.player_name or self.player_name.startswith("Trader_")):
+            self.player_name = display_name
+        self.save()
+
+    def clear_auth(self):
+        """Logs out trader and removes stored credentials."""
+        self.auth_uid = ""
+        self.auth_email = ""
+        self.auth_display_name = ""
+        self.auth_id_token = ""
+        self.auth_refresh_token = ""
+        self.save(sync_cloud=False)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Returns the game progress dict to save to Firestore."""
+        return {
+            "player_name": self.player_name,
             "menu_balance": round(self.menu_balance, 2),
             "total_profit_banked": round(self.total_profit_banked, 2),
             "inventory": self.inventory,
@@ -138,11 +211,73 @@ class UserProfile:
             "equipped_theme": self.equipped_theme,
             "duels_won": self.duels_won
         }
-        try:
-            with open(self._file_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-        except Exception:
-            pass
+
+    def apply_cloud_data(self, cloud_data: Dict[str, Any]) -> None:
+        """Merges remote cloud data into local profile (taking max balances and union of items)."""
+        if not cloud_data or not isinstance(cloud_data, dict):
+            return
+
+        # Name
+        cloud_name = cloud_data.get("player_name")
+        if cloud_name and isinstance(cloud_name, str) and cloud_name.strip():
+            self.player_name = cloud_name.strip()
+        elif not self.player_name and self.auth_display_name:
+            self.player_name = self.auth_display_name
+
+        # Balance & Profits: take higher of local or cloud
+        cloud_bal = float(cloud_data.get("menu_balance", 0.0))
+        if cloud_bal > self.menu_balance:
+            self.menu_balance = cloud_bal
+
+        cloud_profit = float(cloud_data.get("total_profit_banked", 0.0))
+        if cloud_profit > self.total_profit_banked:
+            self.total_profit_banked = cloud_profit
+
+        # Inventory: merge items
+        cloud_inv = cloud_data.get("inventory", [])
+        if isinstance(cloud_inv, list):
+            for item in cloud_inv:
+                if item and item not in self.inventory:
+                    self.inventory.append(item)
+
+        if "money_rain" not in self.inventory:
+            self.inventory.append("money_rain")
+
+        # Equipped items
+        cloud_anim = cloud_data.get("equipped_animation")
+        if cloud_anim and cloud_anim in self.inventory:
+            self.equipped_animation = cloud_anim
+
+        cloud_theme = cloud_data.get("equipped_theme")
+        if cloud_theme:
+            self.equipped_theme = cloud_theme
+
+        # Duels won
+        cloud_duels = int(cloud_data.get("duels_won", 0))
+        if cloud_duels > self.duels_won:
+            self.duels_won = cloud_duels
+
+        self.save(sync_cloud=True)
+
+    def sync_to_cloud(self):
+        """Asynchronously syncs local profile progress to Firestore."""
+        if not self.auth_uid:
+            return
+
+        uid = self.auth_uid
+        p_dict = self.to_dict()
+        token = self.auth_id_token
+
+        def _worker():
+            try:
+                from network.firebase_manager import FirebaseManager
+                fb = FirebaseManager()
+                fb.id_token = token
+                fb.save_user_profile(uid, p_dict)
+            except Exception as e:
+                print(f"[UserProfile] Background cloud sync error: {e}")
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def bank_profit(self, profit_amount: float) -> float:
         """

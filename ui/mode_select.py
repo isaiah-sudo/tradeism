@@ -106,7 +106,8 @@ class FirebaseConfigDialog(tk.Toplevel):
     def _save(self):
         k = self.ent_key.get().strip()
         p = self.ent_pid.get().strip()
-        self.manager.save_config(k, p)
+        auth_domain = f"{p}.firebaseapp.com" if p else "tradisim-188a6.firebaseapp.com"
+        self.manager.save_config(k, p, auth_domain)
         messagebox.showinfo("Saved", "Firebase settings saved successfully!")
         if self.on_saved:
             self.on_saved()

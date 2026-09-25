@@ -308,24 +308,38 @@ LOGIN_HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 
   <script>
+    let authDom = "{{AUTH_DOMAIN}}".trim() || ("{{PROJECT_ID}}".trim() + ".firebaseapp.com");
+    if (!authDom || authDom === ".firebaseapp.com") {
+      authDom = "tradisim-188a6.firebaseapp.com";
+    }
     const firebaseConfig = {
       apiKey: "{{API_KEY}}",
-      authDomain: "{{AUTH_DOMAIN}}",
-      projectId: "{{PROJECT_ID}}"
+      authDomain: authDom,
+      projectId: "{{PROJECT_ID}}" || "tradisim-188a6"
     };
 
     let isFirebaseReady = false;
     let auth = null;
 
-    try {
-      if (typeof firebase !== 'undefined' && firebase.initializeApp) {
-        firebase.initializeApp(firebaseConfig);
+    async function initFirebase() {
+      if (typeof firebase === 'undefined' || !firebase.initializeApp) return;
+      try {
+        if (firebase.apps && firebase.apps.length > 0) {
+          const curApp = firebase.app();
+          if (!curApp.options || !curApp.options.authDomain) {
+            await curApp.delete();
+            firebase.initializeApp(firebaseConfig);
+          }
+        } else {
+          firebase.initializeApp(firebaseConfig);
+        }
         auth = firebase.auth();
         isFirebaseReady = true;
+      } catch (e) {
+        console.error("Firebase init error:", e);
       }
-    } catch (e) {
-      console.error("Firebase init error:", e);
     }
+    initFirebase();
 
     const tabSignIn = document.getElementById('tabSignIn');
     const tabSignUp = document.getElementById('tabSignUp');
@@ -395,6 +409,9 @@ LOGIN_HTML_TEMPLATE = """<!DOCTYPE html>
     btnGoogle.onclick = async () => {
       clearStatus();
       if (!isFirebaseReady || !auth) {
+        await initFirebase();
+      }
+      if (!isFirebaseReady || !auth) {
         showStatus("Firebase client is not available. Please check network connection.");
         return;
       }
@@ -437,6 +454,9 @@ LOGIN_HTML_TEMPLATE = """<!DOCTYPE html>
     authForm.onsubmit = async (e) => {
       e.preventDefault();
       clearStatus();
+      if (!isFirebaseReady || !auth) {
+        await initFirebase();
+      }
       if (!isFirebaseReady || !auth) {
         showStatus("Firebase client is not ready.");
         return;
@@ -581,9 +601,15 @@ class AuthCallbackServer(HTTPServer):
         return f"http://127.0.0.1:{self.get_port()}"
 
     def get_rendered_html(self) -> str:
+        domain = (self.auth_domain or "").strip()
+        if not domain and self.project_id:
+            domain = f"{self.project_id.strip()}.firebaseapp.com"
+        if not domain or domain == ".firebaseapp.com":
+            domain = "tradisim-188a6.firebaseapp.com"
+        pid = (self.project_id or "").strip() or "tradisim-188a6"
         return LOGIN_HTML_TEMPLATE.replace("{{API_KEY}}", self.api_key)\
-                                  .replace("{{PROJECT_ID}}", self.project_id)\
-                                  .replace("{{AUTH_DOMAIN}}", self.auth_domain)
+                                  .replace("{{PROJECT_ID}}", pid)\
+                                  .replace("{{AUTH_DOMAIN}}", domain)
 
     def start(self):
         """Starts the server listening in a daemon thread."""

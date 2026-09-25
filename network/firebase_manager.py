@@ -186,6 +186,11 @@ class FirebaseManager:
             except Exception as e:
                 print(f"[FirebaseManager] Config load error: {e}")
 
+        if not self.auth_domain and self.project_id:
+            self.auth_domain = f"{self.project_id}.firebaseapp.com"
+        if not self.auth_domain:
+            self.auth_domain = "tradisim-188a6.firebaseapp.com"
+
         # Check if configured with valid credentials
         if not self.api_key or "YOUR_FIREBASE" in self.api_key or not self.project_id or "YOUR_FIREBASE" in self.project_id:
             self.is_mock_mode = True
@@ -195,7 +200,12 @@ class FirebaseManager:
     def save_config(self, api_key: str, project_id: str, auth_domain: str = ""):
         self.api_key = api_key.strip()
         self.project_id = project_id.strip()
-        self.auth_domain = auth_domain.strip()
+        domain = (auth_domain or "").strip()
+        if not domain and self.project_id:
+            domain = f"{self.project_id}.firebaseapp.com"
+        if not domain:
+            domain = "tradisim-188a6.firebaseapp.com"
+        self.auth_domain = domain
         data = {
             "apiKey": self.api_key,
             "projectId": self.project_id,

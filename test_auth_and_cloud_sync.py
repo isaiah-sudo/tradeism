@@ -158,6 +158,29 @@ class TestAuthServerAndUI(unittest.TestCase):
         finally:
             server.stop()
 
+    def test_auth_domain_guaranteed_in_server_and_manager(self):
+        """Test that FirebaseManager and AuthCallbackServer never leave auth_domain empty."""
+        fm = FirebaseManager()
+        self.assertTrue(bool(fm.auth_domain))
+        self.assertIn("firebaseapp.com", fm.auth_domain)
+
+        # Even if saved with empty string, it automatically falls back
+        with tempfile.NamedTemporaryFile("w", delete=False) as tf:
+            cfg_file = tf.name
+        try:
+            with patch("network.firebase_manager.CONFIG_FILE", cfg_file):
+                fm.save_config("test_key", "custom-proj", "")
+                self.assertEqual(fm.auth_domain, "custom-proj.firebaseapp.com")
+        finally:
+            if os.path.exists(cfg_file):
+                os.remove(cfg_file)
+
+        # Server rendered HTML must contain valid authDomain
+        server = AuthCallbackServer("fake_key", "custom-proj", "")
+        html = server.get_rendered_html()
+        self.assertIn("custom-proj.firebaseapp.com", html)
+        self.assertNotIn('authDomain: ""', html)
+
     def test_mode_select_sign_in_controls(self):
         """Test that ModeSelectWindow creates the top-left sign in button and nickname persists."""
         window = ModeSelectWindow(on_start_solo=lambda: None, on_start_online=lambda m, f: None)

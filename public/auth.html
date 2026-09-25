@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Day Trade Simulator • Account Sign In</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <!-- Firebase Compat SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      background-color: #0e1117;
+      color: #ffffff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .auth-card {
+      background: #161a25;
+      border: 1px solid #2a2e39;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 440px;
+      padding: 32px 28px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+      text-align: center;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      color: #00e676;
+      background: rgba(0, 230, 118, 0.12);
+      border: 1px solid rgba(0, 230, 118, 0.3);
+      border-radius: 20px;
+      padding: 4px 12px;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 6px;
+      color: #ffffff;
+    }
+    p.subtitle {
+      font-size: 13px;
+      color: #848e9c;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+    .btn-google {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: #ffffff;
+      color: #1f1f1f;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      transition: background 0.18s, transform 0.12s;
+    }
+    .btn-google:hover {
+      background: #f1f3f4;
+      transform: translateY(-1px);
+    }
+    .btn-google svg {
+      width: 18px;
+      height: 18px;
+    }
+    .divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      margin: 22px 0;
+      color: #4f5869;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      border-bottom: 1px solid #2a2e39;
+    }
+    .divider::before { margin-right: 12px; }
+    .divider::after { margin-left: 12px; }
+
+    .tabs {
+      display: flex;
+      background: #0e1117;
+      border-radius: 8px;
+      padding: 3px;
+      margin-bottom: 18px;
+      border: 1px solid #2a2e39;
+    }
+    .tab-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #848e9c;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 0;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: #2962ff;
+      color: #ffffff;
+    }
+
+    .form-group {
+      text-align: left;
+      margin-bottom: 14px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #c5c8d1;
+      margin-bottom: 6px;
+    }
+    input[type="text"], input[type="email"], input[type="password"] {
+      width: 100%;
+      background: #0e1117;
+      border: 1px solid #2a2e39;
+      color: #ffffff;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus {
+      border-color: #2962ff;
+    }
+    .btn-submit {
+      width: 100%;
+      background: #00c853;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 11px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      margin-top: 6px;
+      transition: background 0.18s;
+    }
+    .btn-submit:hover {
+      background: #00e676;
+      color: #000000;
+    }
+    .btn-submit:disabled, .btn-google:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .status-msg {
+      margin-top: 14px;
+      font-size: 12px;
+      color: #ff5252;
+      line-height: 1.4;
+      min-height: 18px;
+    }
+    .status-msg.info {
+      color: #29b6f6;
+    }
+
+    .success-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    .success-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: #00e676;
+      margin-bottom: 10px;
+    }
+    .success-desc {
+      font-size: 13px;
+      color: #c5c8d1;
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .btn-close-tab {
+      background: #2962ff;
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 24px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Auth Card -->
+  <div class="auth-card" id="authBox">
+    <div class="badge">DAY TRADE SIMULATOR • TRADEISM.MEN</div>
+    <h1>Trader Sign In</h1>
+    <p class="subtitle" id="authSubtitle">Sign in to sync your trader name, money vault, and shop items across devices.</p>
+
+    <!-- Google Sign In Button -->
+    <button type="button" class="btn-google" id="btnGoogle">
+      <svg viewBox="0 0 18 18">
+        <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.616z"/>
+        <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
+        <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z"/>
+        <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
+      </svg>
+      Sign in with Google
+    </button>
+
+    <div class="divider">or with email</div>
+
+    <!-- Sign In / Sign Up Tabs -->
+    <div class="tabs">
+      <button type="button" class="tab-btn active" id="tabSignIn">Sign In</button>
+      <button type="button" class="tab-btn" id="tabSignUp">Create Account</button>
+    </div>
+
+    <!-- Form -->
+    <form id="authForm">
+      <div class="form-group" id="groupName" style="display: none;">
+        <label for="inputName">Trader Nickname</label>
+        <input type="text" id="inputName" placeholder="e.g. WallStreetBull" autocomplete="nickname">
+      </div>
+
+      <div class="form-group">
+        <label for="inputEmail">Email Address</label>
+        <input type="email" id="inputEmail" placeholder="trader@example.com" required autocomplete="email">
+      </div>
+
+      <div class="form-group">
+        <label for="inputPassword">Password</label>
+        <input type="password" id="inputPassword" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+
+      <button type="submit" class="btn-submit" id="btnSubmit">Sign In</button>
+    </form>
+
+    <div id="statusMsg" class="status-msg"></div>
+  </div>
+
+  <!-- Success Card -->
+  <div class="auth-card" id="successBox" style="display: none;">
+    <div class="success-icon">🎉</div>
+    <div class="success-title">Successfully Signed In!</div>
+    <div class="success-desc" id="successDesc">
+      Welcome back! All your progress (name, vault money, and shop items) is securely synced with Day Trade Simulator.
+    </div>
+    <p style="font-size: 13px; color: #848e9c; margin-bottom: 20px;" id="successSub">
+      You can now close this browser tab and return to the game.
+    </p>
+    <button type="button" class="btn-close-tab" id="btnCloseTab" onclick="window.close()">Close Window</button>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAPXfhZrr1vndo_2xge6DxVyyGEFHQaIPY",
+      authDomain: "tradisim-188a6.firebaseapp.com",
+      projectId: "tradisim-188a6"
+    };
+
+    let isFirebaseReady = false;
+    let auth = null;
+
+    async function initFirebase() {
+      if (typeof firebase === 'undefined' || !firebase.initializeApp) return;
+      try {
+        if (firebase.apps && firebase.apps.length > 0) {
+          const curApp = firebase.app();
+          if (!curApp.options || !curApp.options.authDomain) {
+            await curApp.delete();
+            firebase.initializeApp(firebaseConfig);
+          }
+        } else {
+          firebase.initializeApp(firebaseConfig);
+        }
+        auth = firebase.auth();
+        isFirebaseReady = true;
+      } catch (e) {
+        console.error("Firebase init error:", e);
+      }
+    }
+    initFirebase();
+
+    // Query parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const desktopPort = urlParams.get('port');
+    const callbackParam = urlParams.get('callback');
+    const targetPort = desktopPort || (callbackParam ? (new URL(callbackParam, window.location.href)).port : null);
+
+    const tabSignIn = document.getElementById('tabSignIn');
+    const tabSignUp = document.getElementById('tabSignUp');
+    const groupName = document.getElementById('groupName');
+    const btnSubmit = document.getElementById('btnSubmit');
+    const authForm = document.getElementById('authForm');
+    const btnGoogle = document.getElementById('btnGoogle');
+    const statusMsg = document.getElementById('statusMsg');
+    const authBox = document.getElementById('authBox');
+    const successBox = document.getElementById('successBox');
+    const successDesc = document.getElementById('successDesc');
+    const successSub = document.getElementById('successSub');
+
+    let mode = 'signin';
+
+    if (targetPort) {
+      document.getElementById('authSubtitle').textContent = "Signing in through tradeism.men for Day Trade Simulator Desktop.";
+    }
+
+    tabSignIn.onclick = () => {
+      mode = 'signin';
+      tabSignIn.classList.add('active');
+      tabSignUp.classList.remove('active');
+      groupName.style.display = 'none';
+      btnSubmit.innerText = 'Sign In';
+      clearStatus();
+    };
+
+    tabSignUp.onclick = () => {
+      mode = 'signup';
+      tabSignUp.classList.add('active');
+      tabSignIn.classList.remove('active');
+      groupName.style.display = 'block';
+      btnSubmit.innerText = 'Create Account';
+      clearStatus();
+    };
+
+    function showStatus(text, isInfo = false) {
+      statusMsg.innerText = text;
+      statusMsg.className = isInfo ? "status-msg info" : "status-msg";
+    }
+
+    function clearStatus() {
+      statusMsg.innerText = "";
+    }
+
+    async function sendAuthToApp(authData) {
+      // 1. If not launched by desktop app, save to localStorage and return to web game
+      if (!targetPort) {
+        try {
+          const raw = localStorage.getItem("daytradesim_profile");
+          const p = raw ? JSON.parse(raw) : {};
+          p.auth_uid = authData.uid;
+          p.auth_email = authData.email || '';
+          p.auth_display_name = authData.displayName || '';
+          p.auth_id_token = authData.idToken || '';
+          p.auth_refresh_token = authData.refreshToken || '';
+          if (authData.displayName && !p.player_name) {
+            p.player_name = authData.displayName;
+          }
+          localStorage.setItem("daytradesim_profile", JSON.stringify(p));
+        } catch (e) {
+          console.error("Local storage sync error:", e);
+        }
+
+        authBox.style.display = 'none';
+        successBox.style.display = 'block';
+        successDesc.textContent = "Welcome! Your progress is now synced on tradeism.men.";
+        successSub.textContent = "Redirecting to trading terminal...";
+        setTimeout(() => {
+          window.location.href = "/";
+        }, 1500);
+        return;
+      }
+
+      // 2. Desktop app receiver flow
+      authBox.style.display = 'none';
+      successBox.style.display = 'block';
+      successDesc.textContent = "Successfully authenticated via tradeism.men! Relaying credentials to Day Trade Simulator...";
+      successSub.textContent = "You can return to the desktop game window.";
+
+      const localBase = `http://127.0.0.1:${targetPort}/callback`;
+      let delivered = false;
+
+      // Try background fetch first
+      try {
+        const resp = await fetch(localBase, {
+          method: 'POST',
+          mode: 'cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(authData)
+        });
+        if (resp.ok) {
+          delivered = true;
+        }
+      } catch (err) {
+        console.warn("Direct POST to local server skipped or blocked, redirecting:", err);
+      }
+
+      // Always perform GET redirect to guarantee completion across browser CORS & Private Network Access policies
+      const redirectUrl = `${localBase}?data=${encodeURIComponent(JSON.stringify(authData))}`;
+      setTimeout(() => {
+        window.location.href = redirectUrl;
+      }, delivered ? 400 : 150);
+    }
+
+    // Google Sign-In
+    btnGoogle.onclick = async () => {
+      clearStatus();
+      if (!isFirebaseReady || !auth) {
+        await initFirebase();
+      }
+      if (!isFirebaseReady || !auth) {
+        showStatus("Firebase client is not available. Please check network connection.");
+        return;
+      }
+      btnGoogle.disabled = true;
+      btnGoogle.innerText = "Connecting to Google...";
+
+      try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        const result = await auth.signInWithPopup(provider);
+        const user = result.user;
+        const idToken = await user.getIdToken();
+        await sendAuthToApp({
+          uid: user.uid,
+          email: user.email || '',
+          displayName: user.displayName || '',
+          idToken: idToken,
+          refreshToken: user.refreshToken || ''
+        });
+      } catch (err) {
+        console.error(err);
+        let msg = err.message || "Google sign-in failed.";
+        if (err.code === 'auth/popup-closed-by-user') {
+          msg = "Sign-in popup was closed before completion.";
+        }
+        showStatus(msg);
+      } finally {
+        btnGoogle.disabled = false;
+        btnGoogle.innerHTML = `
+          <svg viewBox="0 0 18 18">
+            <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.616z"/>
+            <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
+            <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z"/>
+            <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
+          </svg>
+          Sign in with Google`;
+      }
+    };
+
+    // Email / Password Form
+    authForm.onsubmit = async (e) => {
+      e.preventDefault();
+      clearStatus();
+      if (!isFirebaseReady || !auth) {
+        await initFirebase();
+      }
+      if (!isFirebaseReady || !auth) {
+        showStatus("Firebase client is not ready.");
+        return;
+      }
+
+      const email = document.getElementById('inputEmail').value.trim();
+      const password = document.getElementById('inputPassword').value;
+      const nickname = document.getElementById('inputName').value.trim();
+
+      if (!email || !password) return;
+
+      btnSubmit.disabled = true;
+      btnSubmit.innerText = mode === 'signin' ? 'Signing In...' : 'Creating Account...';
+
+      try {
+        let userCred;
+        if (mode === 'signup') {
+          userCred = await auth.createUserWithEmailAndPassword(email, password);
+          if (nickname && userCred.user) {
+            await userCred.user.updateProfile({ displayName: nickname });
+          }
+        } else {
+          userCred = await auth.signInWithEmailAndPassword(email, password);
+        }
+
+        const user = userCred.user;
+        const idToken = await user.getIdToken();
+        await sendAuthToApp({
+          uid: user.uid,
+          email: user.email || '',
+          displayName: nickname || user.displayName || '',
+          idToken: idToken,
+          refreshToken: user.refreshToken || ''
+        });
+      } catch (err) {
+        console.error(err);
+        let msg = err.message || "Authentication failed.";
+        if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+          msg = "Invalid email or password.";
+        } else if (err.code === 'auth/user-not-found') {
+          msg = "No account found with this email.";
+        } else if (err.code === 'auth/email-already-in-use') {
+          msg = "An account with this email already exists.";
+        } else if (err.code === 'auth/weak-password') {
+          msg = "Password should be at least 6 characters.";
+        }
+        showStatus(msg);
+      } finally {
+        btnSubmit.disabled = false;
+        btnSubmit.innerText = mode === 'signin' ? 'Sign In' : 'Create Account';
+      }
+    };
+  </script>
+</body>
+</html>

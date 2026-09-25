@@ -1712,6 +1712,26 @@ class TradingApp {
         this._saveProfile();
         this._updateAuthUi();
         if (this.elModalAuth) this.elModalAuth.style.display = "none";
+
+        // Check if opened from desktop app via ?port=
+        const urlParams = new URLSearchParams(window.location.search);
+        const desktopPort = urlParams.get('port');
+        if (desktopPort) {
+            const authPayload = { uid, email, displayName, idToken, refreshToken };
+            try {
+                fetch(`http://127.0.0.1:${desktopPort}/callback`, {
+                    method: 'POST',
+                    mode: 'cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(authPayload)
+                }).catch(() => {});
+            } catch (e) {}
+            setTimeout(() => {
+                window.location.href = `http://127.0.0.1:${desktopPort}/callback?data=${encodeURIComponent(JSON.stringify(authPayload))}`;
+            }, 300);
+            return;
+        }
+
         alert(`Welcome, ${this.nickname}!\nAll your progress (name, balance, and shop items) is securely synced.`);
     }
 

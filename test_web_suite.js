@@ -422,6 +422,7 @@ it("SimulatedOpponentBot performs realistic random-walk equity progression", () 
 it("FirebaseMatchmaker initializes without syntax or runtime issues", () => {
     const fb = new FirebaseMatchmaker();
     assert.strictEqual(fb.projectId, "tradisim-188a6");
+    assert.strictEqual(fb.authDomain, "tradisim-188a6.firebaseapp.com");
     assert.ok(fb.firestoreBaseUrl.includes("tradisim-188a6"));
 });
 

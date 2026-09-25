@@ -104,6 +104,7 @@ class FirebaseMatchmaker {
     constructor() {
         this.apiKey = "AIzaSyAPXfhZrr1vndo_2xge6DxVyyGEFHQaIPY";
         this.projectId = "tradisim-188a6";
+        this.authDomain = "tradisim-188a6.firebaseapp.com";
         this.userId = "";
         this.idToken = "";
         this.displayName = "";

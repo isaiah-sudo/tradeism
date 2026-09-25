@@ -1591,13 +1591,21 @@ class TradingApp {
                 alert("Firebase Auth SDK is loading or unavailable. Check network connection.");
                 return;
             }
-            if (!firebase.apps.length) {
-                firebase.initializeApp({
-                    apiKey: this.fb.apiKey,
-                    projectId: this.fb.projectId,
-                    authDomain: "tradisim-188a6.firebaseapp.com"
-                });
+            const apiKey = (this.fb && this.fb.apiKey) || "AIzaSyAPXfhZrr1vndo_2xge6DxVyyGEFHQaIPY";
+            const projectId = (this.fb && this.fb.projectId) || "tradisim-188a6";
+            const authDomain = (this.fb && this.fb.authDomain) || "tradisim-188a6.firebaseapp.com";
+            const firebaseConfig = { apiKey, projectId, authDomain };
+
+            if (firebase.apps && firebase.apps.length > 0) {
+                const cur = firebase.app();
+                if (!cur.options || !cur.options.authDomain) {
+                    await cur.delete();
+                    firebase.initializeApp(firebaseConfig);
+                }
+            } else {
+                firebase.initializeApp(firebaseConfig);
             }
+
             const provider = new firebase.auth.GoogleAuthProvider();
             const res = await firebase.auth().signInWithPopup(provider);
             const user = res.user;

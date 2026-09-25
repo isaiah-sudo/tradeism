@@ -515,6 +515,9 @@ LOGIN_HTML_TEMPLATE = """<!DOCTYPE html>
 """
 
 
+WEB_AUTH_BASE_URL = "https://tradeism.men/auth.html"
+
+
 class _AuthHTTPHandler(BaseHTTPRequestHandler):
     server: "AuthCallbackServer"
 
@@ -522,15 +525,81 @@ class _AuthHTTPHandler(BaseHTTPRequestHandler):
         # Suppress default noisy console logging
         pass
 
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.end_headers()
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path in ("/", "/index.html"):
             html = self.server.get_rendered_html()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Content-Length", str(len(html.encode("utf-8"))))
             self.end_headers()
             self.wfile.write(html.encode("utf-8"))
+        elif parsed.path == "/callback":
+            params = urllib.parse.parse_qs(parsed.query)
+            data = {}
+            if "data" in params:
+                try:
+                    data = json.loads(params["data"][0])
+                except Exception:
+                    data = {}
+            elif "uid" in params:
+                data = {
+                    "uid": params.get("uid", [""])[0],
+                    "email": params.get("email", [""])[0],
+                    "displayName": params.get("displayName", [""])[0],
+                    "idToken": params.get("idToken", [""])[0],
+                    "refreshToken": params.get("refreshToken", [""])[0]
+                }
+
+            if data and data.get("uid"):
+                self.server.auth_result = data
+                if self.server.on_success:
+                    self.server.on_success(data)
+                threading.Thread(target=self._delayed_shutdown, daemon=True).start()
+
+                success_html = """<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Signed In • Day Trade Simulator</title>
+  <style>
+    body { background: #0e1117; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+    .card { background: #161a25; border: 1px solid #2a2e39; border-radius: 12px; padding: 36px 32px; max-width: 440px; box-shadow: 0 16px 40px rgba(0,0,0,0.6); }
+    h1 { color: #00e676; margin-bottom: 12px; font-size: 22px; font-weight: 800; }
+    p { color: #848e9c; font-size: 14px; line-height: 1.5; margin-bottom: 20px; }
+    button { background: #2962ff; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="font-size: 40px; margin-bottom: 12px;">🎉</div>
+    <h1>Successfully Signed In!</h1>
+    <p>Your Google / Email account is now synced with Day Trade Simulator.<br><br>You can close this tab and return to the game.</p>
+    <button onclick="window.close()">Close Window</button>
+  </div>
+  <script>setTimeout(() => { try { window.close(); } catch(e){} }, 2500);</script>
+</body>
+</html>"""
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Length", str(len(success_html.encode("utf-8"))))
+                self.end_headers()
+                self.wfile.write(success_html.encode("utf-8"))
+            else:
+                self.send_response(400)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"Invalid auth callback data")
         elif parsed.path == "/favicon.ico":
             self.send_response(204)
             self.end_headers()
@@ -554,6 +623,7 @@ class _AuthHTTPHandler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Private-Network", "true")
                 self.send_header("Content-Length", str(len(resp_body)))
                 self.end_headers()
                 self.wfile.write(resp_body)
@@ -568,6 +638,8 @@ class _AuthHTTPHandler(BaseHTTPRequestHandler):
                 resp_body = json.dumps({"status": "error", "error": "Invalid auth payload"}).encode("utf-8")
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Private-Network", "true")
                 self.end_headers()
                 self.wfile.write(resp_body)
         else:
@@ -599,6 +671,9 @@ class AuthCallbackServer(HTTPServer):
 
     def get_url(self) -> str:
         return f"http://127.0.0.1:{self.get_port()}"
+
+    def get_web_url(self) -> str:
+        return f"{WEB_AUTH_BASE_URL}?port={self.get_port()}"
 
     def get_rendered_html(self) -> str:
         domain = (self.auth_domain or "").strip()

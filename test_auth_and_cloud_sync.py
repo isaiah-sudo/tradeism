@@ -133,7 +133,12 @@ class TestAuthServerAndUI(unittest.TestCase):
                 self.assertIn("Sign in with Google", html)
                 self.assertIn("Create Account", html)
 
-            # 2. Test POST /callback delivers data
+            # 2. Test get_web_url() points to tradeism.men
+            web_url = server.get_web_url()
+            self.assertTrue(web_url.startswith("https://tradeism.men/auth.html?port="))
+            self.assertIn(str(server.get_port()), web_url)
+
+            # 3. Test POST /callback delivers data
             callback_url = f"{url}/callback"
             payload = {
                 "uid": "google_user_789",
@@ -155,6 +160,24 @@ class TestAuthServerAndUI(unittest.TestCase):
             self.assertEqual(len(captured), 1)
             self.assertEqual(captured[0]["uid"], "google_user_789")
             self.assertEqual(captured[0]["displayName"], "GoogleTrader")
+
+            # 4. Test GET /callback with data parameter (browser redirect transfer)
+            get_payload = {
+                "uid": "redirect_user_101",
+                "email": "redirect@google.com",
+                "displayName": "RedirectTrader",
+                "idToken": "token_abc",
+                "refreshToken": "ref_abc"
+            }
+            get_callback_url = f"{url}/callback?data={urllib.parse.quote(json.dumps(get_payload))}"
+            with urllib.request.urlopen(get_callback_url) as resp:
+                self.assertEqual(resp.status, 200)
+                html_resp = resp.read().decode("utf-8")
+                self.assertIn("Successfully Signed In", html_resp)
+
+            self.assertEqual(len(captured), 2)
+            self.assertEqual(captured[1]["uid"], "redirect_user_101")
+            self.assertEqual(captured[1]["displayName"], "RedirectTrader")
         finally:
             server.stop()
 
@@ -183,26 +206,41 @@ class TestAuthServerAndUI(unittest.TestCase):
 
     def test_mode_select_sign_in_controls(self):
         """Test that ModeSelectWindow creates the top-left sign in button and nickname persists."""
-        window = ModeSelectWindow(on_start_solo=lambda: None, on_start_online=lambda m, f: None)
+        import profile_manager
+        old_inst = profile_manager._profile_instance
+        tmp = tempfile.mktemp()
+        orig = UserProfile._get_storage_path
+        UserProfile._get_storage_path = lambda s: tmp
+        profile_manager._profile_instance = None
         try:
-            # Check top_left_ctrls exists
-            self.assertTrue(hasattr(window, "top_left_ctrls"))
-            children = window.top_left_ctrls.winfo_children()
-            self.assertTrue(len(children) > 0)
-            # Default is unauthenticated -> "Sign In" button
-            btn = children[0]
-            self.assertIn("Sign In", btn.cget("text"))
+            window = ModeSelectWindow(on_start_solo=lambda: None, on_start_online=lambda m, f: None)
+            try:
+                # Check top_left_ctrls exists
+                self.assertTrue(hasattr(window, "top_left_ctrls"))
+                children = window.top_left_ctrls.winfo_children()
+                self.assertTrue(len(children) > 0)
+                # Default is unauthenticated -> "Sign In" button
+                btn = children[0]
+                self.assertIn("Sign In", btn.cget("text"))
 
-            # Test nickname input
-            self.assertTrue(hasattr(window, "ent_nickname"))
-            window.ent_nickname.delete(0, "end")
-            window.ent_nickname.insert(0, "CustomTraderName")
-            window._on_nickname_changed()
+                # Test nickname input
+                self.assertTrue(hasattr(window, "ent_nickname"))
+                window.ent_nickname.delete(0, "end")
+                window.ent_nickname.insert(0, "CustomTraderName")
+                window._on_nickname_changed()
 
-            # Verify saved to profile
-            self.assertEqual(window.profile.player_name, "CustomTraderName")
+                # Verify saved to profile
+                self.assertEqual(window.profile.player_name, "CustomTraderName")
+            finally:
+                window.destroy()
         finally:
-            window.destroy()
+            UserProfile._get_storage_path = orig
+            profile_manager._profile_instance = old_inst
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except Exception:
+                    pass
 
 
 if __name__ == "__main__":

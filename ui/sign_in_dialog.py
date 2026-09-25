@@ -245,7 +245,7 @@ class SignInDialog(tk.Toplevel):
 
             tk.Label(
                 browser_card,
-                text="🌐 BROWSER SIGN IN (GOOGLE & EMAIL)",
+                text="🌐 BROWSER SIGN IN VIA TRADEISM.MEN",
                 font=("Segoe UI", 9, "bold"),
                 fg=self.GREEN,
                 bg=self.CARD_BG
@@ -253,7 +253,7 @@ class SignInDialog(tk.Toplevel):
 
             self.lbl_browser_status = tk.Label(
                 browser_card,
-                text="A browser window has opened. Complete sign-in with Google or Email there!",
+                text="Opening tradeism.men in your browser. Sign in with Google or Email there!",
                 font=("Segoe UI", 8),
                 fg=self.TEXT_MUTED,
                 bg=self.CARD_BG,
@@ -264,7 +264,7 @@ class SignInDialog(tk.Toplevel):
 
             btn_reopen = tk.Button(
                 browser_card,
-                text="🔗 Re-open Browser Sign-In Page",
+                text="🔗 Open tradeism.men Sign-In Page",
                 font=("Segoe UI", 9, "bold"),
                 bg="#2962ff",
                 fg="#ffffff",
@@ -383,11 +383,11 @@ class SignInDialog(tk.Toplevel):
                 on_success=on_browser_success
             )
             self.auth_server.start()
-            login_url = self.auth_server.get_url()
+            login_url = self.auth_server.get_web_url()
             webbrowser.open(login_url)
             if hasattr(self, "lbl_browser_status") and self.lbl_browser_status:
                 self.lbl_browser_status.config(
-                    text=f"🟢 Browser opened! Listening on {login_url}\nComplete sign-in with Google or Email in the browser.",
+                    text=f"🟢 Opened tradeism.men in browser!\nSign in with Google or Email on tradeism.men to sync your account.",
                     fg="#29b6f6"
                 )
         except Exception as e:
